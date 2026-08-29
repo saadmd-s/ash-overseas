@@ -323,12 +323,12 @@ does not let a later statement read an earlier one's generated key.
 The first approach preserves the all-or-nothing guarantee and is the likely
 answer. The correctness requirement is fixed regardless of mechanism.
 
-## 7. Proposed: `id_sequences`
+## 7. `id_sequences` — confirmed addition
 
-> **This table is not in the SRS.** §15.3 requires "the human-ID sequence" to be
-> part of the atomic batch, and FR-T9 requires `{MODE}-{YYYY}-{MM}-{NNNN}` with a
-> zero-padded sequence scoped to mode and month — but §12 and §13 define no table
-> to hold the counter. **This is a genuine specification gap.**
+> **DECIDED — owner, 29 Aug 2026.** This table is **not in the SRS**: §15.3
+> requires "the human-ID sequence" to be part of the atomic batch and FR-T9
+> requires `{MODE}-{YYYY}-{MM}-{NNNN}`, but §12 and §13 define nothing to hold the
+> counter. That gap is closed by the table below.
 
 ```sql
 CREATE TABLE id_sequences (
@@ -353,9 +353,16 @@ longer matches), and both approaches race in a way a dedicated counter does not.
 A single-user app makes a race unlikely, not impossible — a double-tapped save
 button is enough.
 
-**Alternatives if the SRS tail specifies otherwise:** the sequence could live in
-the untranscribed sections in another form. Confirm against §15.5+ before
-building.
+**If the SRS tail specifies otherwise**, reconcile then — but the counter has to
+live somewhere, and nothing in §1–§15.4 provides it.
+
+### 7.1 Void interaction
+
+A voided transaction **keeps** its human ID. The sequence never rewinds and a
+number is never reused, so `SALE-2026-08-0039` refers to exactly one record
+forever, voided or not. This is what makes the ID safe to quote in conversation
+and to print in an export — and it is the specific reason a count-based counter
+would be wrong.
 
 ## 8. Query Patterns
 
@@ -439,10 +446,10 @@ initial password hash is supplied out-of-band by the maintainer, never committed
 
 | # | Gap | Impact | Status |
 | --- | --- | --- | --- |
-| 1 | No table for the human-ID sequence required by §15.3 / FR-T9 | Blocks FR-T9 | `id_sequences` proposed above — **needs confirmation** |
-| 2 | `reverses_entry_id` has no declared FK to `ledger_entries.id` | Orphan reversal possible | Add self-referencing FK, or enforce in the posting layer |
-| 3 | `source_id` conventions for `opening` and `reversal` unstated | Ambiguous joins | Derived table in §4.5 — confirm |
-| 4 | No `sessions` table | Session storage undefined | Likely stateless signed cookie; **[PENDING §16]** |
-| 5 | No unique constraint on `transaction_lines (transaction_id, line_no)` | Duplicate line numbers possible | Recommend adding |
-| 6 | No backup or retention posture stated | D1 holds the only copy of the ledger | **[PENDING §17]** |
+| 1 | No table for the human-ID sequence required by §15.3 / FR-T9 | Blocks FR-T9 | **RESOLVED** — `id_sequences` confirmed by the owner, 29 Aug 2026 (§7) |
+| 2 | No backup or retention posture stated | D1 holds the only copy of the ledger | **RESOLVED** — Time Travel + owner-triggered full export, no R2. See [TRD.md §13.1](TRD.md), which flags the restore gap |
+| 3 | No `sessions` table | Session storage undefined | **RESOLVED in shape** — 30-day stateless signed cookie, no server-side session rows needed (see [TRD.md §9.1](TRD.md)) |
+| 4 | `reverses_entry_id` has no declared FK to `ledger_entries.id` | Orphan reversal possible | Add self-referencing FK, or enforce in the posting layer |
+| 5 | `source_id` conventions for `opening` and `reversal` unstated | Ambiguous joins | Derived table in §4.5 — confirm against the SRS tail |
+| 6 | No unique constraint on `transaction_lines (transaction_id, line_no)` | Duplicate line numbers possible | Recommend adding |
 | 7 | Replay's exact row-exclusion rule | Intermediate rows may differ | **[PENDING §15.5]** |

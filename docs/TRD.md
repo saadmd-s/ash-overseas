@@ -64,11 +64,13 @@ database. This is the single most important structural decision in the codebase.
 
 ## 3. Technology Stack
 
-> **[PENDING §18]** — SRS §18 holds the authoritative stack decision and has not
-> been transcribed. The recommendation below is provisional. Confirm before
-> scaffolding.
+> **DECIDED — owner, 29 Aug 2026: Vite + React + Hono on Workers.**
+> SRS §18 is untranscribed; the owner chose to settle the question rather than
+> wait for it. If §18 turns out to say otherwise, reconcile then — the module
+> boundaries in §4 are framework-agnostic, so the cost is confined to the routing
+> layer and the build config.
 
-### 3.1 Recommended: Vite + React + Hono on Workers
+### 3.1 Vite + React + Hono on Workers
 
 | Layer | Choice | Rationale |
 | --- | --- | --- |
@@ -90,9 +92,8 @@ requirement, no public pages, one user — while consuming Worker CPU on every
 navigation. Vite + React + Hono is the smaller, faster, more directly testable
 fit.
 
-**If §18 says Next.js instead**, the module boundaries in §4 below are unchanged.
-`money/`, `ledger/`, and `posting/` are framework-agnostic by construction; only
-the routing layer and the build config differ.
+`money/`, `ledger/`, and `posting/` are framework-agnostic by construction, so
+this decision reaches only the routing layer and the build config.
 
 ### 3.2 Repository Layout
 
@@ -373,10 +374,26 @@ single-row `app_credentials` table (§12.3).
   writes a `credential_change` audit row.
 - No sign-up, no email reset, no public route (FR-U3).
 
-> **[PENDING §16, §19.5]** — session lifetime, rate limiting on login, lockout
-> policy, and the maintainer credential-recovery procedure all live in
-> untranscribed sections. The auth implementation cannot be called complete
-> until §16 and §19.5 are available.
+### 9.1 Session lifetime
+
+**DECIDED — owner, 29 Aug 2026: a long session with no inactivity lock.**
+
+- Cookie `Max-Age` of 30 days, refreshed on use.
+- **No inactivity timeout and no re-authentication prompt inside the app.**
+
+The reasoning is deliberate: the phone's own lock screen is the real security
+boundary here, and a password prompt at a weighbridge is friction that pushes the
+owner back toward the paper notebook. The threat this app actually faces is a lost
+balance, not a lost password.
+
+Consequence: an unlocked, unattended phone gives full access, including the
+ability to void entries. That is accepted. It is recorded here so the trade-off is
+visible rather than implicit.
+
+> **[PENDING §16, §19.5]** — login rate limiting, lockout policy, and the
+> maintainer credential-recovery procedure remain untranscribed. Rate limiting on
+> `/api/auth/login` should be implemented regardless, since it costs little and
+> the route is the only public attack surface.
 
 ## 10. Export Pipeline
 
@@ -411,6 +428,28 @@ Requirements from §11.4:
 
 For a large range the API paginates and the export module concatenates before
 writing.
+
+### 10.1 The backup export — a fourth export
+
+Beyond the three accountant-facing exports in §11.1, the backup posture (§13.1)
+needs a **full data export**: every dealer, transaction, transaction line,
+payment, ledger entry, and audit row — not merely what the three filtered views
+happen to cover.
+
+| | Three §11 exports | Backup export |
+| --- | --- | --- |
+| Audience | The accountant, a human | The owner's archive; possibly a restore |
+| Scope | Filtered view on screen | **Everything, unfiltered** |
+| Money | Rupees, `paise / 100` | **Integer paise, unconverted** |
+| Format | `.xlsx` / `.csv` | JSON (recommended) or `.xlsx` |
+| Re-importable | No, by §11.5 | **Yes, if the recommendation in §13.1 is accepted** |
+
+Keeping money as integer paise in the backup matters: converting to rupees and
+back is exactly the boundary crossing the money rule exists to prevent, and a
+backup that round-trips through a float is not a backup.
+
+Delivery: a browser download. Saving it to Google Drive is the owner's manual
+step — see §13.1.
 
 ## 11. Frontend Technical Requirements
 
@@ -477,11 +516,53 @@ deferrable to a later phase.
   browser precisely to keep it there.
 - **Correctness over availability.** If a balance cannot be computed with
   certainty, show an error rather than a number.
-- **Data durability.** D1 holds the only copy of the business ledger. A backup
-  posture is required and is not specified in §1–§15.4 — raised as an open item.
+- **Data durability.** See §13.1 — decided posture, with one gap flagged.
 - **Accessibility.** Semantic HTML, real `<label>`s, visible focus rings, AA
   contrast, no meaning by colour alone, screen-reader text spelling out balance
   direction (§10.10).
+
+### 13.1 Backup and durability
+
+**DECIDED — owner, 29 Aug 2026: D1 Time Travel, plus an owner-triggered full
+data export downloaded locally or saved to Google Drive. No R2.**
+
+Two layers, covering different failure modes:
+
+| Layer | Covers | Mechanism |
+| --- | --- | --- |
+| **D1 Time Travel** | Accidental damage caught within the retention window | Built in; restore via `wrangler d1 time-travel restore`. A maintainer operation, not an in-app feature. |
+| **Full data export** | Long-horizon archive; a copy the owner physically holds | New in-app export (§10.1 below), downloaded or saved to Google Drive |
+
+#### The gap, stated plainly
+
+Time Travel's window is roughly 30 days. SRS §11.5 declares exports **not
+re-importable**. Taken together, damage discovered after the Time Travel window
+leaves a readable archive but **no path back to a working database** — someone
+would re-key the ledger by hand.
+
+**Recommendation:** make the *backup* export a machine-readable JSON dump — every
+table, money still in integer paise, no rupee conversion — and write a restore
+script that loads it. The three accountant-facing exports in §11 stay exactly as
+specified; §11.5's "not an integration format" is about those, and a backup
+serves a different purpose. This needs the owner's agreement since it is a
+deliberate extension beyond §11.
+
+Without that, the honest position is: **restore capability is 30 days**, and the
+downloaded workbooks are a record for humans, not a recovery mechanism.
+
+#### Google Drive
+
+Two ways to land a file in Drive, with very different costs:
+
+1. **Download, then the owner saves it to Drive.** Zero integration code, no
+   OAuth, no stored tokens, works offline-ish. Recommended default.
+2. **Direct upload via the Drive API.** Requires an OAuth client, a consent
+   flow, and refresh-token storage inside a single-user app that currently has
+   no third-party integration at all — a meaningful increase in surface area and
+   in what a leaked session grants.
+
+Start with (1). Add (2) only if the manual step proves to be the thing that stops
+backups happening.
 
 ## 14. Deployment & Migrations
 
@@ -512,14 +593,26 @@ A checklist for review. Any violation is a defect regardless of test status.
 
 ## 16. Open Technical Items
 
+### 16.1 Resolved — owner decisions, 29 Aug 2026
+
+| Item | Decision |
+| --- | --- |
+| Framework | **Vite + React + Hono on Workers** (§3) |
+| Human-ID sequence | **Dedicated `id_sequences` table** ([BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md)) |
+| Backup posture | **D1 Time Travel + owner-triggered full export, no R2** (§13.1) |
+| Session lifetime | **30-day cookie, no inactivity lock** (§9.1) |
+
+### 16.2 Still open
+
 | # | Item | Blocked SRS section | Blocks |
 | --- | --- | --- | --- |
-| 1 | Framework: Next.js vs Vite+React+Hono | §18 | Scaffolding |
-| 2 | Money-math reference implementation | Appendix B | `money/` sign-off |
-| 3 | Batch ID-allocation mechanism | §15.3 (derived) | Posting layer |
-| 4 | Human-ID sequence table | §12, §13 (absent) | Schema, FR-T9 |
-| 5 | Replay trigger on back-dated insert | §15.5 | Replay correctness |
-| 6 | Session lifetime, login rate limiting | §16 | Auth completion |
-| 7 | Credential recovery procedure | §19.5 | FR-U3 completion |
-| 8 | Backup and retention posture | §17 | Production readiness |
+| 1 | Money-math reference implementation | Appendix B | `money/` sign-off |
+| 2 | Replay trigger on back-dated insert | §15.5 | Replay correctness |
+| 3 | Replay's exact row-exclusion rule | §15.5 | Replay correctness |
+| 4 | Batch ID-allocation mechanism | — (implementation) | Posting layer |
+| 5 | `source_id` convention for `opening` / `reversal` | §12.3 (unstated) | Schema queries |
+| 6 | Backup export re-importable? | §11.5 vs §13.1 | Real restore capability |
+| 7 | Login rate limiting, lockout policy | §16 | Auth hardening |
+| 8 | Credential recovery procedure | §19.5 | FR-U3 completion |
 | 9 | Authoritative testing strategy | §20 | Test plan sign-off |
+| 10 | Delivery plan | §23 | Reconciling the implementation plan |

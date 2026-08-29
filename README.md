@@ -91,13 +91,14 @@ reproducing every figure exactly:
 
 ## Stack
 
-Cloudflare Workers + D1 (SQLite) + Drizzle ORM, Zod at every route boundary,
-single-user password gate, mobile-first PWA, Excel export generated client-side
-with SheetJS.
+**Vite + React + Hono** on Cloudflare Workers, with D1 (SQLite) + Drizzle ORM,
+Zod at every route boundary, a single-user password gate, a mobile-first PWA, and
+Excel export generated client-side with SheetJS.
 
-The framework choice — Next.js vs Vite + React + Hono — sits in the untranscribed
-SRS §18. [docs/TRD.md §3](docs/TRD.md) carries a provisional recommendation
-(Vite + React + Hono) and the reasoning. **Confirm before scaffolding.**
+Backup is D1 Time Travel plus an owner-triggered full data export, downloaded or
+saved to Google Drive — no R2. See [docs/TRD.md §13.1](docs/TRD.md), which flags
+one gap: §11.5 makes exports non-re-importable, so restore capability is
+currently the ~30-day Time Travel window.
 
 ## Getting started
 

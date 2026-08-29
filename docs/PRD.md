@@ -229,21 +229,36 @@ The product is successful when the notebook is closed for good. Concretely:
 
 ## 10. Open Product Questions
 
-These need the owner's or the SRS's answer before the affected work starts.
+### 10.1 Answered — owner, 29 Aug 2026
 
-1. **Framework choice** — Next.js vs Vite + React + Hono. Lives in SRS §18. See
-   [TRD.md §3](TRD.md) for the provisional recommendation. Blocks scaffolding.
-2. **Credential recovery** — the maintainer procedure referenced by FR-U3 lives
+| Question | Answer |
+| --- | --- |
+| Framework | **Vite + React + Hono on Workers** — see [TRD.md §3](TRD.md) |
+| Human-ID sequence storage | **Dedicated `id_sequences` table** — [BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md) |
+| Retention and backup | **D1 Time Travel + an owner-triggered full export, downloaded or saved to Google Drive. No R2.** — [TRD.md §13.1](TRD.md) |
+| Session lifetime | **30-day cookie, no inactivity lock** — [TRD.md §9.1](TRD.md) |
+
+Two of these carry consequences worth stating in product terms:
+
+- **The session decision accepts a trade-off.** An unlocked, unattended phone
+  gives full access, including voiding entries. The phone's lock screen is the
+  security boundary. This is deliberate — a password prompt at a weighbridge is
+  friction that pushes the owner back to the notebook.
+- **Restore capability is currently ~30 days.** Time Travel covers that window;
+  beyond it, the downloaded export is a readable archive but not a restore path,
+  because §11.5 declares exports non-re-importable. Closing that means making
+  the *backup* export machine-readable — see §10.2 item 3.
+
+### 10.2 Still open
+
+1. **Credential recovery** — the maintainer procedure referenced by FR-U3 lives
    in §19.5. Blocks the auth implementation being called complete.
-3. **Retention and backup** — no requirement seen in §1–§15.4. A single-user D1
-   holding the only copy of the business ledger needs a stated backup posture.
-   Possibly covered by the untranscribed §17. **[PENDING §17]**
-4. **Session lifetime** — how long a session cookie lasts, and whether the app
-   locks on a phone after inactivity. Likely §16. **[PENDING §16]**
-5. **Human-ID sequence storage** — §15.3 requires the sequence to be allocated
-   inside the atomic batch, but §12 and §13 define no table to hold it. See
-   [BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md) for the proposed `id_sequences`
-   table. Needs confirmation.
+2. **Money-math reference implementation** — Appendix B. Blocks Phase 1 sign-off.
+3. **Is the backup export re-importable?** A deliberate extension beyond §11.5,
+   and the difference between a 30-day restore window and an indefinite one.
+   Recommended in [TRD.md §13.1](TRD.md); needs the owner's agreement.
+4. **Replay rules** — the §15.5 sentence describing the back-dated-insert trigger
+   is cut mid-word, and the exact row-exclusion rule is unstated.
 
 ---
 

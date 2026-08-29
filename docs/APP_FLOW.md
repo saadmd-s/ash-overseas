@@ -72,8 +72,15 @@ On load, the client calls `GET /api/auth/me` to decide between Login and Home.
 both username and password changes (FR-U2), and writes a `credential_change`
 audit row.
 
-> **[PENDING §16]** — session lifetime, inactivity lock on a phone, and login
-> rate limiting are not in the transcribed spec.
+**Session lifetime — decided by the owner, 29 Aug 2026:** a 30-day cookie,
+refreshed on use, with **no inactivity lock and no re-authentication prompt
+inside the app**. The app opens straight to Home; the phone's own lock screen is
+the security boundary. See [TRD.md §9.1](TRD.md) for the reasoning and the
+accepted trade-off.
+
+> **[PENDING §16]** — login rate limiting and lockout policy are still
+> untranscribed. Rate limiting on `/api/auth/login` should be built regardless:
+> it is the only public route in the application.
 
 ## 4. Primary Flow — Record a Sale
 

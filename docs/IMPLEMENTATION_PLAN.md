@@ -33,26 +33,40 @@ something already proven.
 **Nothing in Phases 1–6 should start on a guess where an answer exists in the
 untranscribed SRS.**
 
+### 0.1 Settled — owner decisions, 29 Aug 2026
+
+| Question | Answer | Recorded in |
+| --- | --- | --- |
+| Framework | **Vite + React + Hono on Workers** | [TRD.md §3](TRD.md) |
+| Human-ID sequence | **Dedicated `id_sequences` table** | [BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md) |
+| Backup posture | **D1 Time Travel + owner-triggered full export; no R2** | [TRD.md §13.1](TRD.md) |
+| Session | **30-day cookie, no inactivity lock** | [TRD.md §9.1](TRD.md) |
+
+**Phase 1 is unblocked.** Scaffolding can begin.
+
+### 0.2 Outstanding
+
 | # | Task | Blocks | Source |
 | --- | --- | --- | --- |
-| 0.1 | Obtain SRS §15.5–§23 and both appendices | Everything below | Owner |
-| 0.2 | Confirm framework: Next.js vs Vite+React+Hono | Phase 1 scaffold | §18 |
-| 0.3 | Reconcile money-math signatures with the reference implementation | Phase 1 | Appendix B |
-| 0.4 | Confirm or reject the `id_sequences` table | Phase 2 | §12/§13 gap |
-| 0.5 | Confirm the replay trigger on back-dated inserts | Phase 2 | §15.5 |
-| 0.6 | Confirm `source_id` conventions for `opening` / `reversal` | Phase 2 | §12.3 |
-| 0.7 | Obtain session lifetime, rate limiting, lockout policy | Phase 3 | §16 |
-| 0.8 | Obtain credential recovery procedure | Phase 3 | §19.5 |
-| 0.9 | Obtain backup and retention posture | Phase 6 | §17 |
+| a | Obtain SRS §15.5–§23 and both appendices | Several items below | Owner — the paste was truncated at 50,000 chars |
+| b | Reconcile money-math signatures with the reference implementation | **Phase 1 sign-off** | Appendix B |
+| c | Confirm the replay trigger on back-dated inserts | Phase 2 | §15.5 |
+| d | Confirm replay's exact row-exclusion rule | Phase 2 | §15.5 |
+| e | Confirm `source_id` conventions for `opening` / `reversal` | Phase 2 | §12.3 |
+| f | Decide the batch ID-allocation mechanism | Phase 2 | Implementation |
+| g | Decide whether the backup export is re-importable | Phase 5/6 | §11.5 vs [TRD.md §13.1](TRD.md) |
+| h | Obtain login rate limiting and lockout policy | Phase 3 | §16 |
+| i | Obtain credential recovery procedure | Phase 3 | §19.5 |
+| j | Obtain authoritative testing strategy and delivery plan | Phase 6 | §20, §23 |
 
-**Exit criteria:** every **[PENDING]** marker in [TRD.md §16](TRD.md) and
-[BACKEND_SCHEMA.md §10](BACKEND_SCHEMA.md) is either resolved or explicitly
-accepted as a documented assumption with the owner's sign-off.
+**None of these blocks Phase 1 from starting.** Item (b) blocks Phase 1 being
+*signed off*: the money module can be built from §8 and validated against the
+§6 figures, but its signatures should be reconciled with Appendix B before the
+phase is called done.
 
-**If §18 cannot be recovered**, proceed on the [TRD.md §3](TRD.md)
-recommendation — Vite + React + Hono. The module boundaries are framework-
-agnostic by construction, so the cost of being wrong is confined to the routing
-layer and the build config.
+**Exit criteria:** every **[PENDING]** marker in [TRD.md §16.2](TRD.md) and
+[BACKEND_SCHEMA.md §10](BACKEND_SCHEMA.md) is resolved, or explicitly accepted as
+a documented assumption with the owner's sign-off.
 
 ---
 
@@ -62,7 +76,7 @@ layer and the build config.
 
 ### 1.1 Scaffold
 
-- Repo toolchain per the §18 answer; TypeScript strict mode.
+- Vite + React + Hono on Workers (0.1); TypeScript strict mode.
 - Vitest configured.
 - ESLint with a **custom rule banning `parseFloat`, `toFixed`, and bare
   `Math.round` outside `src/money/`**. This is the single most valuable piece of
@@ -111,7 +125,7 @@ acceptance tests and are not deferrable.
 ### 2.1 Schema
 
 - `src/db/schema.ts` transcribed from SRS §13 **verbatim**.
-- `id_sequences` added if confirmed in 0.4.
+- `id_sequences` added (confirmed 0.1).
 - Optional CHECK constraints per [BACKEND_SCHEMA.md §5.1](BACKEND_SCHEMA.md).
 - `drizzle-kit generate`; commit the SQL; apply with
   `wrangler d1 migrations apply --local`.
@@ -122,7 +136,7 @@ acceptance tests and are not deferrable.
 [BACKEND_SCHEMA.md §6](BACKEND_SCHEMA.md). **Contains no arithmetic** — it calls
 the engine and writes what it returns.
 
-Resolve the ID-ordering problem (0.4 / [BACKEND_SCHEMA.md §6.1](BACKEND_SCHEMA.md))
+Resolve the ID-ordering problem (0.2f / [BACKEND_SCHEMA.md §6.1](BACKEND_SCHEMA.md))
 here, and record the chosen mechanism in the TRD.
 
 ### 2.3 Replay
@@ -156,7 +170,8 @@ the database with the same figures it produced in Phase 1.
 - Constant-time hash comparison.
 - Session cookie: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`.
 - Credential change re-requires the current password; writes an audit row.
-- Session lifetime and rate limiting per 0.7.
+- **Session: 30-day cookie, no inactivity lock** (0.1). Rate limiting on
+  `/api/auth/login` regardless of 0.2h — it is the only public attack surface.
 
 ### 3.2 Routes
 
@@ -234,6 +249,9 @@ seconds, with every figure matching the SRS.
   dates**, frozen bold header, column widths set so nothing renders `####`.
 - CSV writer over the same rows.
 - Three exports: dealer ledger, all transactions, dealer balances (§11.3).
+- **Fourth export — the full data backup** ([TRD.md §10.1](TRD.md)): every table,
+  unfiltered, money left as **integer paise**. Downloaded; the owner saves it to
+  Google Drive manually. Whether it is re-importable is open item 0.2g.
 - Title block with business name, filters applied, closing balance in plain
   language, generation timestamp. Totals row beneath.
 - Pagination handling for large ranges.
@@ -268,7 +286,8 @@ correctly, and shows −3,19,592 in column S with "You owe dealer" in column T.
 - **All states**: loading, empty, error defined on every screen — including the
   dealer detail rule that an uncertain balance shows **an error, never a number**.
 - **Integrity check**: on-demand replay-and-compare across all dealers.
-- **Backup posture** per 0.9.
+- **Backup**: D1 Time Travel verified by an actual restore, plus the full data
+  export of Phase 5.1 (0.1). No R2.
 - Production D1 provisioning, secrets, first credential seed (§19).
 
 ### 6.2 Release gate
