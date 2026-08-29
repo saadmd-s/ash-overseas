@@ -50,14 +50,14 @@ absolute.
 **The user never sees the words "debit" or "credit", and never sees a bare `+` or
 `−`.** (§5, §10.8)
 
-| Internal state | What the user reads |
-| --- | --- |
+| Internal state              | What the user reads      |
+| --------------------------- | ------------------------ |
 | `running_balance_paise > 0` | **"Dealer owes you ₹X"** |
-| `running_balance_paise < 0` | **"You owe dealer ₹X"** |
-| `running_balance_paise = 0` | **"Settled"** |
+| `running_balance_paise < 0` | **"You owe dealer ₹X"**  |
+| `running_balance_paise = 0` | **"Settled"**            |
 
 Appendix B's `balanceHeadline` always takes the dealer's name, so the produced
-copy is *"Kumar Traders owes you ₹3,23,000"* — which reads better than the
+copy is _"Kumar Traders owes you ₹3,23,000"_ — which reads better than the
 generic form and removes any doubt about direction.
 
 Payment direction is likewise plain language — **"Received from dealer"** and
@@ -78,23 +78,23 @@ the words.
 
 ## 3. Component Inventory
 
-| Component | Responsibility | Key rules |
-| --- | --- | --- |
-| `BalanceHeadline` | The hero balance | Renders `balanceHeadline()` from the money module (Appendix B) — the UI never formats a balance itself. Icon + text; screen-reader text spells out direction |
-| `BalanceInline` | Balance in a list row | Same language rules, compact |
-| `MoneyInput` | Rupee entry → integer paise | **Emits paise only**; never holds a float |
-| `MoneyDisplay` | Render an amount | Wraps `formatPaise()`; the only money renderer |
-| `DatePicker` | Calendar date entry | Max = today in **IST**; emits `YYYY-MM-DD` text |
-| `DealerPicker` | Searchable dealer select | Excludes archived by default |
-| `ModeToggle` | Purchase / Sale | Pre-set from entry point |
-| `BankAccountToggle` | OD / Current segmented control | Required on transactions; defaults to last used |
-| `LineItemRow` | One item line | Item optional; quantity + rate required |
-| `TotalsPanel` | Live base / GST / total / round-off | Recomputes on every keystroke |
-| `LedgerRow` | One history entry | Shows running balance after that entry |
-| `FilterBar` | Date / type / mode / bank filters | Must render the "N of M" notice when active |
-| `VoidDialog` | Void confirmation | **Names the entry and the amount** |
-| `ExportMenu` | Format choice + trigger | Passes current filters through |
-| `Toast` | Save feedback | Names what was saved |
+| Component           | Responsibility                      | Key rules                                                                                                                                                    |
+| ------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BalanceHeadline`   | The hero balance                    | Renders `balanceHeadline()` from the money module (Appendix B) — the UI never formats a balance itself. Icon + text; screen-reader text spells out direction |
+| `BalanceInline`     | Balance in a list row               | Same language rules, compact                                                                                                                                 |
+| `MoneyInput`        | Rupee entry → integer paise         | **Emits paise only**; never holds a float                                                                                                                    |
+| `MoneyDisplay`      | Render an amount                    | Wraps `formatPaise()`; the only money renderer                                                                                                               |
+| `DatePicker`        | Calendar date entry                 | Max = today in **IST**; emits `YYYY-MM-DD` text                                                                                                              |
+| `DealerPicker`      | Searchable dealer select            | Excludes archived by default                                                                                                                                 |
+| `ModeToggle`        | Purchase / Sale                     | Pre-set from entry point                                                                                                                                     |
+| `BankAccountToggle` | OD / Current segmented control      | Required on transactions; defaults to last used                                                                                                              |
+| `LineItemRow`       | One item line                       | Item optional; quantity + rate required                                                                                                                      |
+| `TotalsPanel`       | Live base / GST / total / round-off | Recomputes on every keystroke                                                                                                                                |
+| `LedgerRow`         | One history entry                   | Shows running balance after that entry                                                                                                                       |
+| `FilterBar`         | Date / type / mode / bank filters   | Must render the "N of M" notice when active                                                                                                                  |
+| `VoidDialog`        | Void confirmation                   | **Names the entry and the amount**                                                                                                                           |
+| `ExportMenu`        | Format choice + trigger             | Passes current filters through                                                                                                                               |
+| `Toast`             | Save feedback                       | Names what was saved                                                                                                                                         |
 
 ## 4. Visual Tokens
 
@@ -108,13 +108,13 @@ what must not change.
 
 Typeface: **Inter**, self-hosted via `@fontsource-variable/inter`.
 
-| Role | Size | Weight |
-| --- | --- | --- |
-| Balance headline | 32 / 40 px | 700 |
-| Screen title | 20 px | 600 |
-| Body | 16 px | 400 |
-| Amount in a row | 16 px | 600, tabular numerals |
-| Label / meta | 13 px | 400 |
+| Role             | Size       | Weight                |
+| ---------------- | ---------- | --------------------- |
+| Balance headline | 32 / 40 px | 700                   |
+| Screen title     | 20 px      | 600                   |
+| Body             | 16 px      | 400                   |
+| Amount in a row  | 16 px      | 600, tabular numerals |
+| Label / meta     | 13 px      | 400                   |
 
 **Amounts always use tabular (monospaced) numerals** so digits align down a
 column and a misread is less likely.
@@ -124,12 +124,12 @@ column and a misread is less likely.
 Colour is **always secondary** to icon and text. It never carries meaning alone
 (§10.10).
 
-| Role | Light | Dark |
-| --- | --- | --- |
-| Receivable ("owes you") | `#0F7B4F` | `#4ADE80` |
-| Payable ("you owe") | `#B4451F` | `#FB923C` |
-| Settled | `#4B5563` | `#9CA3AF` |
-| Voided row | 55% opacity + strike-through | same |
+| Role                    | Light                        | Dark      |
+| ----------------------- | ---------------------------- | --------- |
+| Receivable ("owes you") | `#0F7B4F`                    | `#4ADE80` |
+| Payable ("you owe")     | `#B4451F`                    | `#FB923C` |
+| Settled                 | `#4B5563`                    | `#9CA3AF` |
+| Voided row              | 55% opacity + strike-through | same      |
 
 **The accent colour is an open item** — SRS §22 lists the business name, logo,
 and colour accent for the login screen and export title block as still to be
@@ -199,22 +199,22 @@ direction. A "new entry" action from this screen pre-sets the mode.
 
 Field order matches how the owner reads a docket:
 
-| # | Field | Behaviour |
-| --- | --- | --- |
-| 1 | Mode | Pre-set from entry point |
-| 2 | Dealer | Pre-set when entered from a dealer screen |
-| 3 | Date | Defaults to today; **future dates blocked** |
-| 4 | Invoice No. | Optional free text |
-| 5 | Item | Optional free text, autocomplete from past entries |
-| 6 | Quantity | Required, ≥ 0; unit is optional free text beside it |
-| 7 | Rate | Required, ≥ 0, in rupees |
-| 8 | **Base total** | Computed, read-only |
-| 9 | *(+ add another item)* | Repeats 5–7 |
-| 10 | GST % | Pre-filled 18, editable, 0–100 |
-| 11 | GST amount | Computed, read-only |
-| 12 | **Total amount** | Computed, read-only; round-off shown when non-zero |
-| 13 | Bank account | OD / Current segmented; required; defaults to last used |
-| 14 | *More options* | Collapsed: reference tag, discount, freight, return marker, invoice date, notes |
+| #   | Field                  | Behaviour                                                                       |
+| --- | ---------------------- | ------------------------------------------------------------------------------- |
+| 1   | Mode                   | Pre-set from entry point                                                        |
+| 2   | Dealer                 | Pre-set when entered from a dealer screen                                       |
+| 3   | Date                   | Defaults to today; **future dates blocked**                                     |
+| 4   | Invoice No.            | Optional free text                                                              |
+| 5   | Item                   | Optional free text, autocomplete from past entries                              |
+| 6   | Quantity               | Required, ≥ 0; unit is optional free text beside it                             |
+| 7   | Rate                   | Required, ≥ 0, in rupees                                                        |
+| 8   | **Base total**         | Computed, read-only                                                             |
+| 9   | _(+ add another item)_ | Repeats 5–7                                                                     |
+| 10  | GST %                  | Pre-filled 18, editable, 0–100                                                  |
+| 11  | GST amount             | Computed, read-only                                                             |
+| 12  | **Total amount**       | Computed, read-only; round-off shown when non-zero                              |
+| 13  | Bank account           | OD / Current segmented; required; defaults to last used                         |
+| 14  | _More options_         | Collapsed: reference tag, discount, freight, return marker, invoice date, notes |
 
 **One line by default.** The majority of entries use a single line; "add another
 item" is an action, not a pre-expanded list (FR-T3).
@@ -259,14 +259,14 @@ source of truth. Drafts store paise, matching form state.
 
 ## 7. Display Rules (§10.8)
 
-| Item | Rule |
-| --- | --- |
-| Amounts | `₹1,23,456.78` — Indian grouping, via the single `formatPaise()` using `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`, **formatted from paise** |
-| Balances | Always plain-language direction, never a bare sign |
-| Dates | `DD MMM YYYY` — e.g. `15 Aug 2026` |
-| Voided entries | Struck through, reversal adjacent |
-| GST at 0% | Row shows `—`, not `₹0.00` |
-| Zero amounts in export | Debit/Credit columns blank when zero |
+| Item                   | Rule                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Amounts                | `₹1,23,456.78` — Indian grouping, via the single `formatPaise()` using `Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`, **formatted from paise** |
+| Balances               | Always plain-language direction, never a bare sign                                                                                                                    |
+| Dates                  | `DD MMM YYYY` — e.g. `15 Aug 2026`                                                                                                                                    |
+| Voided entries         | Struck through, reversal adjacent                                                                                                                                     |
+| GST at 0%              | Row shows `—`, not `₹0.00`                                                                                                                                            |
+| Zero amounts in export | Debit/Credit columns blank when zero                                                                                                                                  |
 
 **No ad-hoc formatting anywhere.** One utility, one call site pattern.
 
@@ -333,16 +333,16 @@ is a dangerous balance. Every `/api/*` request is network-only.
 
 ## 12. Copy Guidelines
 
-| Do | Don't |
-| --- | --- |
-| "Kumar Traders owes you ₹34,408" | "Balance: +34,408" |
-| "You owe dealer ₹3,23,000" | "Cr 3,23,000" |
-| "Settled" | "₹0.00" |
-| "Received from dealer" | "Credit" |
-| "Paid to dealer" | "Debit" |
+| Do                                      | Don't                |
+| --------------------------------------- | -------------------- |
+| "Kumar Traders owes you ₹34,408"        | "Balance: +34,408"   |
+| "You owe dealer ₹3,23,000"              | "Cr 3,23,000"        |
+| "Settled"                               | "₹0.00"              |
+| "Received from dealer"                  | "Credit"             |
+| "Paid to dealer"                        | "Debit"              |
 | "Void SALE-2026-08-0039 for ₹2,19,952?" | "Delete this entry?" |
-| "Filtered — showing 1 of 2 entries" | *(silence)* |
-| "Saved SALE-2026-08-0039 — ₹2,69,323" | "Success" |
+| "Filtered — showing 1 of 2 entries"     | _(silence)_          |
+| "Saved SALE-2026-08-0039 — ₹2,69,323"   | "Success"            |
 
 Never the word "delete" anywhere in the interface — nothing is ever deleted, and
 the copy should not suggest otherwise.

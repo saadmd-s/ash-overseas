@@ -37,6 +37,7 @@
 21. Scope Boundaries
 22. Assumptions & Open Items
 23. Delivery Plan
+
 - Appendix A — Differences from the dual-valuation specification
 - Appendix B — Money-math reference implementation
 
@@ -75,17 +76,17 @@ The words "debit" and "credit" are defined in Section 5, always from the busines
 
 ## 2. Glossary
 
-| Term | Meaning |
-| --- | --- |
-| **Dealer** | Any party the business buys from or sells to. A dealer may be a supplier, a buyer, or both. |
-| **Transaction** | A movement of goods — a purchase from a dealer, or a sale to a dealer. Carries one or more item lines, a GST rate, and a total. |
-| **Line item** | A single row within a transaction: item name (optional), quantity, unit, rate, and the resulting amount. |
-| **Payment** | A movement of money — an advance, a part-payment, or a settlement — recorded independently of any single transaction. |
+| Term                 | Meaning                                                                                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dealer**           | Any party the business buys from or sells to. A dealer may be a supplier, a buyer, or both.                                                                                                                                           |
+| **Transaction**      | A movement of goods — a purchase from a dealer, or a sale to a dealer. Carries one or more item lines, a GST rate, and a total.                                                                                                       |
+| **Line item**        | A single row within a transaction: item name (optional), quantity, unit, rate, and the resulting amount.                                                                                                                              |
+| **Payment**          | A movement of money — an advance, a part-payment, or a settlement — recorded independently of any single transaction.                                                                                                                 |
 | **Bank account tag** | A label on each entry recording which of the **business's own** bank accounts the money runs through: **OD** (overdraft account) or **Current** (current account). It is a tag and a filter only; it never splits a dealer's balance. |
-| **Running balance** | The single signed net position with a dealer after every entry, in date order. |
-| **Reference tag** | The owner's own shipment label (for example "ASH 39"), recorded alongside the system identifier. |
-| **Void** | Cancelling an entry by posting an equal and opposite reversing entry. Nothing is ever deleted. |
-| **Paise** | One-hundredth of a rupee; the integer unit in which all money is stored. |
+| **Running balance**  | The single signed net position with a dealer after every entry, in date order.                                                                                                                                                        |
+| **Reference tag**    | The owner's own shipment label (for example "ASH 39"), recorded alongside the system identifier.                                                                                                                                      |
+| **Void**             | Cancelling an entry by posting an equal and opposite reversing entry. Nothing is ever deleted.                                                                                                                                        |
+| **Paise**            | One-hundredth of a rupee; the integer unit in which all money is stored.                                                                                                                                                              |
 
 ---
 
@@ -164,12 +165,12 @@ These scenarios define correct behaviour precisely. The ledger engine must repro
 
 A dealer the business both buys from and sells to. GST 18% throughout.
 
-| Step | Date | Event | Calculation | Posting | Balance |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 01 Aug | Money received from dealer ₹6,00,000 | — | credit 6,00,000 | −6,00,000 |
-| 2 | 05 Aug | **Sale** 1,000 kg × ₹200 | base 2,00,000 + GST 36,000 = 2,36,000 | debit 2,36,000 | −3,64,000 |
-| 3 | 10 Aug | **Purchase** 500 kg × ₹100 | base 50,000 + GST 9,000 = 59,000 | credit 59,000 | −4,23,000 |
-| 4 | 15 Aug | Money paid to dealer ₹1,00,000 | — | debit 1,00,000 | −3,23,000 |
+| Step | Date   | Event                                | Calculation                           | Posting         | Balance   |
+| ---- | ------ | ------------------------------------ | ------------------------------------- | --------------- | --------- |
+| 1    | 01 Aug | Money received from dealer ₹6,00,000 | —                                     | credit 6,00,000 | −6,00,000 |
+| 2    | 05 Aug | **Sale** 1,000 kg × ₹200             | base 2,00,000 + GST 36,000 = 2,36,000 | debit 2,36,000  | −3,64,000 |
+| 3    | 10 Aug | **Purchase** 500 kg × ₹100           | base 50,000 + GST 9,000 = 59,000      | credit 59,000   | −4,23,000 |
+| 4    | 15 Aug | Money paid to dealer ₹1,00,000       | —                                     | debit 1,00,000  | −3,23,000 |
 
 Final headline: **"You owe dealer ₹3,23,000."**
 A single number moves in both directions with no special handling.
@@ -190,11 +191,11 @@ The transaction stores `round_off_paise = −20`. The ledger is debited **₹2,6
 
 ### 6.3 Scenario C — Advance against two shipments
 
-| Step | Date | Event | Calculation | Posting | Balance |
-| --- | --- | --- | --- | --- | --- |
-| 1 | 02 Jul | Advance received | — | credit 8,08,867 | −8,08,867 |
-| 2 | 09 Jul | Sale, ref "ASH 39" | 9,510 × ₹24 = 2,28,240; GST 41,083.20; total 2,69,323.20 → **2,69,323** (round-off −0.20) | debit 2,69,323 | −5,39,544 |
-| 3 | 21 Jul | Sale, ref "ASH 42" | 11,650 × ₹16 = 1,86,400; GST 33,552.00; total **2,19,952** (round-off 0) | debit 2,19,952 | **−3,19,592** |
+| Step | Date   | Event              | Calculation                                                                               | Posting         | Balance       |
+| ---- | ------ | ------------------ | ----------------------------------------------------------------------------------------- | --------------- | ------------- |
+| 1    | 02 Jul | Advance received   | —                                                                                         | credit 8,08,867 | −8,08,867     |
+| 2    | 09 Jul | Sale, ref "ASH 39" | 9,510 × ₹24 = 2,28,240; GST 41,083.20; total 2,69,323.20 → **2,69,323** (round-off −0.20) | debit 2,69,323  | −5,39,544     |
+| 3    | 21 Jul | Sale, ref "ASH 42" | 11,650 × ₹16 = 1,86,400; GST 33,552.00; total **2,19,952** (round-off 0)                  | debit 2,19,952  | **−3,19,592** |
 
 Final headline: **"You owe dealer ₹3,19,592."** This is the returnable balance the owner needs to see at a glance.
 
@@ -223,10 +224,10 @@ The dealer's history shows the original entry struck through with its reversal d
 
 ### 6.6 Scenario F — The bank account tag does not split the balance
 
-| Step | Event | Bank tag | Posting | Balance |
-| --- | --- | --- | --- | --- |
-| 1 | Sale, base ₹50,000 + GST ₹9,000 | **OD** | debit 59,000 | +59,000 |
-| 2 | Sale, base ₹1,00,000 + GST ₹18,000 | **Current** | debit 1,18,000 | **+1,77,000** |
+| Step | Event                              | Bank tag    | Posting        | Balance       |
+| ---- | ---------------------------------- | ----------- | -------------- | ------------- |
+| 1    | Sale, base ₹50,000 + GST ₹9,000    | **OD**      | debit 59,000   | +59,000       |
+| 2    | Sale, base ₹1,00,000 + GST ₹18,000 | **Current** | debit 1,18,000 | **+1,77,000** |
 
 The headline reads **"Dealer owes you ₹1,77,000"** — one figure. Filtering the history to "OD only" shows step 1 alone, but the headline balance and the running balance column are always computed over **all** entries, never over the filtered subset. The filter is presentational; a filtered view must display a clear "filtered — showing 1 of 2 entries" notice so this can never be misread.
 
@@ -236,14 +237,14 @@ The headline reads **"Dealer owes you ₹1,77,000"** — one figure. Filtering t
 
 For each kind of event the application writes exactly **one** ledger entry.
 
-| Event | Ledger effect | Amount posted |
-| --- | --- | --- |
-| **Sale** (goods to dealer) | **debit** | rounded grand total (base − discount + freight + GST) |
-| **Purchase** (goods from dealer) | **credit** | rounded grand total (base − discount + freight + GST) |
-| **Money received** from dealer | **credit** | amount |
-| **Money paid** to dealer | **debit** | amount |
-| **Opening position** (dealer seeded) | debit or credit as entered | opening amount |
-| **Void / correction** | reversing entry, equal and opposite | the original posted amount |
+| Event                                | Ledger effect                       | Amount posted                                         |
+| ------------------------------------ | ----------------------------------- | ----------------------------------------------------- |
+| **Sale** (goods to dealer)           | **debit**                           | rounded grand total (base − discount + freight + GST) |
+| **Purchase** (goods from dealer)     | **credit**                          | rounded grand total (base − discount + freight + GST) |
+| **Money received** from dealer       | **credit**                          | amount                                                |
+| **Money paid** to dealer             | **debit**                           | amount                                                |
+| **Opening position** (dealer seeded) | debit or credit as entered          | opening amount                                        |
+| **Void / correction**                | reversing entry, equal and opposite | the original posted amount                            |
 
 Notes:
 
@@ -430,25 +431,25 @@ A searchable list filtered by dealer type, each row showing name and current bal
 
 Field order, top to bottom, matching how the owner reads a docket:
 
-| # | Field | Notes |
-| --- | --- | --- |
-| 1 | Mode | Purchase / Sale — pre-set from the entry point |
-| 2 | Dealer | Searchable picker; pre-set when entered from a dealer screen |
-| 3 | **Date** | Defaults to today; future dates blocked |
-| 4 | **Invoice No.** | Optional free text |
-| 5 | **Item** | Optional free text, with autocomplete |
-| 6 | **Quantity** | Required, non-negative; unit is an optional free-text field beside it |
-| 7 | **Rate** | Required, non-negative, in rupees |
-| 8 | **Base total** | **Computed, read-only** — quantity × rate, summed over lines |
-| 9 | *(+ add another item)* | Repeats fields 5–7 |
-| 10 | **GST %** | Pre-filled 18, editable, 0–100 |
-| 11 | GST amount | **Computed, read-only** |
-| 12 | **Total amount** | **Computed, read-only** — grand total, with round-off shown when non-zero |
-| 13 | **Bank account** | **OD** / **Current** segmented control; required; defaults to last used |
-| 14 | *More options* (collapsed) | Reference tag, discount, freight, credit/debit-note marker, invoice date, notes |
+| #   | Field                      | Notes                                                                           |
+| --- | -------------------------- | ------------------------------------------------------------------------------- |
+| 1   | Mode                       | Purchase / Sale — pre-set from the entry point                                  |
+| 2   | Dealer                     | Searchable picker; pre-set when entered from a dealer screen                    |
+| 3   | **Date**                   | Defaults to today; future dates blocked                                         |
+| 4   | **Invoice No.**            | Optional free text                                                              |
+| 5   | **Item**                   | Optional free text, with autocomplete                                           |
+| 6   | **Quantity**               | Required, non-negative; unit is an optional free-text field beside it           |
+| 7   | **Rate**                   | Required, non-negative, in rupees                                               |
+| 8   | **Base total**             | **Computed, read-only** — quantity × rate, summed over lines                    |
+| 9   | _(+ add another item)_     | Repeats fields 5–7                                                              |
+| 10  | **GST %**                  | Pre-filled 18, editable, 0–100                                                  |
+| 11  | GST amount                 | **Computed, read-only**                                                         |
+| 12  | **Total amount**           | **Computed, read-only** — grand total, with round-off shown when non-zero       |
+| 13  | **Bank account**           | **OD** / **Current** segmented control; required; defaults to last used         |
+| 14  | _More options_ (collapsed) | Reference tag, discount, freight, credit/debit-note marker, invoice date, notes |
 
 - **Money input:** the owner types rupees (`3,13,830` or `313830.50`); a shared `MoneyInput` component parses to integer paise and emits paise only. Form state never holds a float rupee value. The field live-formats to Indian grouping while typing, curtails input beyond two decimal places, and treats empty as "not entered", never as zero.
-- **Draft persistence:** in-progress input autosaves to `localStorage`, so a dropped mobile connection or an accidental back-navigation never loses a half-typed entry. The draft is cleared on successful save. This is deliberately *not* full offline sync, which would conflict with the single source of truth.
+- **Draft persistence:** in-progress input autosaves to `localStorage`, so a dropped mobile connection or an accidental back-navigation never loses a half-typed entry. The draft is cleared on successful save. This is deliberately _not_ full offline sync, which would conflict with the single source of truth.
 - On save failure the user's input is preserved and an actionable error is shown.
 
 ### 10.7 New Payment Form
@@ -464,18 +465,18 @@ Fields: dealer, date, **direction** (Received from dealer / Paid to dealer — p
 
 ### 10.9 Validation Rules (enforced on both client and server)
 
-| Rule | Detail |
-| --- | --- |
-| Quantity | Required, a number ≥ 0 |
-| Rate | Required, integer paise ≥ 0 |
-| Line count | At least one line item per transaction |
-| GST rate | A number from 0 to 100 inclusive |
-| Payment amount | Integer paise, strictly greater than 0 |
-| Discount / freight | Integer paise ≥ 0; discount may not exceed the base total |
-| Date | Required; not later than today (IST) |
-| Dealer | Must exist and not be archived |
-| Bank account | Required on transactions; one of `od`, `current` |
-| Money fields | Integer paise only — floats, `NaN`, and out-of-range values are rejected at the server boundary |
+| Rule               | Detail                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| Quantity           | Required, a number ≥ 0                                                                          |
+| Rate               | Required, integer paise ≥ 0                                                                     |
+| Line count         | At least one line item per transaction                                                          |
+| GST rate           | A number from 0 to 100 inclusive                                                                |
+| Payment amount     | Integer paise, strictly greater than 0                                                          |
+| Discount / freight | Integer paise ≥ 0; discount may not exceed the base total                                       |
+| Date               | Required; not later than today (IST)                                                            |
+| Dealer             | Must exist and not be archived                                                                  |
+| Bank account       | Required on transactions; one of `od`, `current`                                                |
+| Money fields       | Integer paise only — floats, `NaN`, and out-of-range values are rejected at the server boundary |
 
 Server-side validation is authoritative and is re-run in full even when the client has already checked. Zod schemas at every route boundary.
 
@@ -494,11 +495,11 @@ Export is a first-class feature of this edition, not an afterthought. It is how 
 
 ### 11.1 Where Exports Are Offered
 
-| Export | Entry point | Contents |
-| --- | --- | --- |
-| **Dealer ledger** | Dealer detail → Export | That dealer's full history with running balance |
+| Export               | Entry point                    | Contents                                                       |
+| -------------------- | ------------------------------ | -------------------------------------------------------------- |
+| **Dealer ledger**    | Dealer detail → Export         | That dealer's full history with running balance                |
 | **All transactions** | All transactions view → Export | Every transaction across dealers, honouring the active filters |
-| **Dealer balances** | Home → Export | One row per dealer with the current balance |
+| **Dealer balances**  | Home → Export                  | One row per dealer with the current balance                    |
 
 Each export respects the filters visible on screen at the time (date range, mode, bank account, dealer type). A subtitle row in the sheet states exactly which filters were applied, so a file can never be misread out of context.
 
@@ -514,30 +515,30 @@ Generate the workbook **client-side in the browser** from JSON returned by the A
 
 **Dealer ledger** — file `<Dealer>-ledger-<YYYY-MM-DD>.xlsx`, sheet `Ledger`:
 
-| Col | Header | Type | Notes |
-| --- | --- | --- | --- |
-| A | Date | date | `DD-MMM-YYYY` display format |
-| B | Type | text | Sale / Purchase / Received / Paid / Opening / Reversal |
-| C | Invoice No. | text | |
-| D | Reference | text | Owner's tag, e.g. "ASH 39" |
-| E | Item(s) | text | Line items joined with `; `; blank if not entered |
-| F | Quantity | number | Blank for payments |
-| G | Unit | text | |
-| H | Rate (₹) | number | Blank for multi-line transactions |
-| I | Base Total (₹) | number | |
-| J | Discount (₹) | number | |
-| K | Freight (₹) | number | |
-| L | GST % | number | |
-| M | GST Amount (₹) | number | |
-| N | Round Off (₹) | number | |
-| O | Total (₹) | number | Grand total |
-| P | Bank A/c | text | OD / Current |
-| Q | Debit (₹) | number | Blank when zero |
-| R | Credit (₹) | number | Blank when zero |
-| S | Balance (₹) | number | Running balance, signed |
-| T | Direction | text | "Dealer owes you" / "You owe dealer" / "Settled" |
-| U | Status | text | Blank, or "VOIDED", or "REVERSAL" |
-| V | Notes | text | |
+| Col | Header         | Type   | Notes                                                  |
+| --- | -------------- | ------ | ------------------------------------------------------ |
+| A   | Date           | date   | `DD-MMM-YYYY` display format                           |
+| B   | Type           | text   | Sale / Purchase / Received / Paid / Opening / Reversal |
+| C   | Invoice No.    | text   |                                                        |
+| D   | Reference      | text   | Owner's tag, e.g. "ASH 39"                             |
+| E   | Item(s)        | text   | Line items joined with `; `; blank if not entered      |
+| F   | Quantity       | number | Blank for payments                                     |
+| G   | Unit           | text   |                                                        |
+| H   | Rate (₹)       | number | Blank for multi-line transactions                      |
+| I   | Base Total (₹) | number |                                                        |
+| J   | Discount (₹)   | number |                                                        |
+| K   | Freight (₹)    | number |                                                        |
+| L   | GST %          | number |                                                        |
+| M   | GST Amount (₹) | number |                                                        |
+| N   | Round Off (₹)  | number |                                                        |
+| O   | Total (₹)      | number | Grand total                                            |
+| P   | Bank A/c       | text   | OD / Current                                           |
+| Q   | Debit (₹)      | number | Blank when zero                                        |
+| R   | Credit (₹)     | number | Blank when zero                                        |
+| S   | Balance (₹)    | number | Running balance, signed                                |
+| T   | Direction      | text   | "Dealer owes you" / "You owe dealer" / "Settled"       |
+| U   | Status         | text   | Blank, or "VOIDED", or "REVERSAL"                      |
+| V   | Notes          | text   |                                                        |
 
 Above the header: a title block with the business name, the dealer name, the applied filters, the closing balance in plain language, and the generation timestamp. Below the last row: a **totals row** summing Debit, Credit, Base, GST and Total.
 
@@ -563,15 +564,15 @@ Exports are a snapshot for a human and their accountant. They are explicitly **n
 
 ### 12.1 Entity Overview
 
-| Table | Holds |
-| --- | --- |
-| `dealers` | Identity and contact details; a type used only for list filtering |
-| `transactions` | One goods deal (purchase or sale): header, GST rate, totals, bank account tag |
-| `transaction_lines` | The per-item quantity, unit, rate and amount |
-| `payments` | Money received from and paid to dealers |
-| `ledger_entries` | The append-only posted ledger with running balances — the digital khata |
-| `audit_log` | Every create, void, and edit, with before/after JSON |
-| `app_credentials` | The single user's username and password hash |
+| Table               | Holds                                                                         |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `dealers`           | Identity and contact details; a type used only for list filtering             |
+| `transactions`      | One goods deal (purchase or sale): header, GST rate, totals, bank account tag |
+| `transaction_lines` | The per-item quantity, unit, rate and amount                                  |
+| `payments`          | Money received from and paid to dealers                                       |
+| `ledger_entries`    | The append-only posted ledger with running balances — the digital khata       |
+| `audit_log`         | Every create, void, and edit, with before/after JSON                          |
+| `app_credentials`   | The single user's username and password hash                                  |
 
 ### 12.2 Relationships
 
@@ -587,108 +588,108 @@ Every `ledger_entries` row traces back to its source record. Nothing in `ledger_
 
 **dealers**
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| id | integer PK | |
-| name | text, required | |
-| contact | text | |
-| address | text | |
-| gstin | text | Dealer's GST number |
-| state_code | text | e.g. "33" (TN), "07" (Delhi) |
-| type | enum(supplier, buyer, both) | List filter only; never splits the balance |
-| is_archived | boolean | Default false |
-| created_at | timestamp | |
+| Field       | Type                        | Notes                                      |
+| ----------- | --------------------------- | ------------------------------------------ |
+| id          | integer PK                  |                                            |
+| name        | text, required              |                                            |
+| contact     | text                        |                                            |
+| address     | text                        |                                            |
+| gstin       | text                        | Dealer's GST number                        |
+| state_code  | text                        | e.g. "33" (TN), "07" (Delhi)               |
+| type        | enum(supplier, buyer, both) | List filter only; never splits the balance |
+| is_archived | boolean                     | Default false                              |
+| created_at  | timestamp                   |                                            |
 
 **transactions**
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| id | integer PK | |
-| human_id | text, unique | e.g. "SALE-2026-08-0039" |
-| mode | enum(purchase, sale) | |
-| dealer_id | integer FK → dealers | |
-| entry_date | text `YYYY-MM-DD` | The ledger date (IST calendar date) |
-| invoice_no | text | Optional |
-| invoice_date | text `YYYY-MM-DD` | Optional; only when it differs from entry_date |
-| reference_tag | text | Owner's own label, e.g. "ASH 39" |
-| bank_account | enum(od, current) | Tag and filter only |
-| gst_rate | real | Percent, default 18 |
-| base_total_paise | integer | Σ line amounts |
-| discount_paise | integer | Default 0 |
-| freight_paise | integer | Default 0 |
-| gst_amount_paise | integer | Computed on (base − discount + freight) |
-| round_off_paise | integer | Default 0; may be negative |
-| grand_total_paise | integer | What posted to the ledger |
-| is_return_note | boolean | Credit/debit note or return — posts in reverse |
-| notes | text | |
-| is_voided | boolean | Default false |
-| created_at | timestamp | |
+| Field             | Type                 | Notes                                          |
+| ----------------- | -------------------- | ---------------------------------------------- |
+| id                | integer PK           |                                                |
+| human_id          | text, unique         | e.g. "SALE-2026-08-0039"                       |
+| mode              | enum(purchase, sale) |                                                |
+| dealer_id         | integer FK → dealers |                                                |
+| entry_date        | text `YYYY-MM-DD`    | The ledger date (IST calendar date)            |
+| invoice_no        | text                 | Optional                                       |
+| invoice_date      | text `YYYY-MM-DD`    | Optional; only when it differs from entry_date |
+| reference_tag     | text                 | Owner's own label, e.g. "ASH 39"               |
+| bank_account      | enum(od, current)    | Tag and filter only                            |
+| gst_rate          | real                 | Percent, default 18                            |
+| base_total_paise  | integer              | Σ line amounts                                 |
+| discount_paise    | integer              | Default 0                                      |
+| freight_paise     | integer              | Default 0                                      |
+| gst_amount_paise  | integer              | Computed on (base − discount + freight)        |
+| round_off_paise   | integer              | Default 0; may be negative                     |
+| grand_total_paise | integer              | What posted to the ledger                      |
+| is_return_note    | boolean              | Credit/debit note or return — posts in reverse |
+| notes             | text                 |                                                |
+| is_voided         | boolean              | Default false                                  |
+| created_at        | timestamp            |                                                |
 
 **transaction_lines**
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| id | integer PK | |
-| transaction_id | integer FK → transactions | |
-| item_name | text | **Optional** free text; no master |
-| quantity | real, required | |
-| unit | text | Free text: kg, pcs, lot… |
-| rate_paise | integer, required | |
-| amount_paise | integer | roundPaise(quantity × rate_paise) |
-| line_no | integer | Display order within the transaction |
+| Field          | Type                      | Notes                                |
+| -------------- | ------------------------- | ------------------------------------ |
+| id             | integer PK                |                                      |
+| transaction_id | integer FK → transactions |                                      |
+| item_name      | text                      | **Optional** free text; no master    |
+| quantity       | real, required            |                                      |
+| unit           | text                      | Free text: kg, pcs, lot…             |
+| rate_paise     | integer, required         |                                      |
+| amount_paise   | integer                   | roundPaise(quantity × rate_paise)    |
+| line_no        | integer                   | Display order within the transaction |
 
 **payments**
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| id | integer PK | |
-| human_id | text, unique | e.g. "RCPT-2026-08-0012" / "PAY-2026-08-0007" |
-| dealer_id | integer FK → dealers | |
-| entry_date | text `YYYY-MM-DD` | |
-| direction | enum(received, paid) | received = money from the dealer |
-| amount_paise | integer | > 0 |
-| method | enum(cash, bank, cheque, upi) | Optional |
-| bank_account | enum(od, current) | Optional; omitted for cash |
-| reference | text | Cheque number, UTR, etc. |
-| notes | text | |
-| is_voided | boolean | Default false |
-| created_at | timestamp | |
+| Field        | Type                          | Notes                                         |
+| ------------ | ----------------------------- | --------------------------------------------- |
+| id           | integer PK                    |                                               |
+| human_id     | text, unique                  | e.g. "RCPT-2026-08-0012" / "PAY-2026-08-0007" |
+| dealer_id    | integer FK → dealers          |                                               |
+| entry_date   | text `YYYY-MM-DD`             |                                               |
+| direction    | enum(received, paid)          | received = money from the dealer              |
+| amount_paise | integer                       | > 0                                           |
+| method       | enum(cash, bank, cheque, upi) | Optional                                      |
+| bank_account | enum(od, current)             | Optional; omitted for cash                    |
+| reference    | text                          | Cheque number, UTR, etc.                      |
+| notes        | text                          |                                               |
+| is_voided    | boolean                       | Default false                                 |
+| created_at   | timestamp                     |                                               |
 
 **ledger_entries**
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| id | integer PK | |
-| dealer_id | integer FK → dealers | |
-| entry_date | text `YYYY-MM-DD` | |
-| source_type | enum(transaction, payment, opening, reversal) | |
-| source_id | integer | The originating record |
-| reverses_entry_id | integer | Set on reversal rows; points at the entry being undone |
-| debit_paise | integer | Default 0 — dealer owes the business more |
-| credit_paise | integer | Default 0 — the business owes the dealer more |
-| running_balance_paise | integer | + dealer owes; − business owes |
-| bank_account | enum(od, current) | Copied from the source for filtering; nullable |
-| label | text | Sale / Purchase / Received / Paid / Opening / Reversal |
-| description | text | |
-| created_at | timestamp | |
+| Field                 | Type                                          | Notes                                                  |
+| --------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| id                    | integer PK                                    |                                                        |
+| dealer_id             | integer FK → dealers                          |                                                        |
+| entry_date            | text `YYYY-MM-DD`                             |                                                        |
+| source_type           | enum(transaction, payment, opening, reversal) |                                                        |
+| source_id             | integer                                       | The originating record                                 |
+| reverses_entry_id     | integer                                       | Set on reversal rows; points at the entry being undone |
+| debit_paise           | integer                                       | Default 0 — dealer owes the business more              |
+| credit_paise          | integer                                       | Default 0 — the business owes the dealer more          |
+| running_balance_paise | integer                                       | + dealer owes; − business owes                         |
+| bank_account          | enum(od, current)                             | Copied from the source for filtering; nullable         |
+| label                 | text                                          | Sale / Purchase / Received / Paid / Opening / Reversal |
+| description           | text                                          |                                                        |
+| created_at            | timestamp                                     |                                                        |
 
 **audit_log**
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| id | integer PK | |
-| action | text | create / void / edit / login / credential_change |
-| entity | text | Table name |
-| entity_id | integer | |
-| before_json | text | Prior state |
-| after_json | text | New state |
-| at | timestamp | |
+| Field       | Type       | Notes                                            |
+| ----------- | ---------- | ------------------------------------------------ |
+| id          | integer PK |                                                  |
+| action      | text       | create / void / edit / login / credential_change |
+| entity      | text       | Table name                                       |
+| entity_id   | integer    |                                                  |
+| before_json | text       | Prior state                                      |
+| after_json  | text       | New state                                        |
+| at          | timestamp  |                                                  |
 
 **app_credentials** — exactly one row: `id`, `username`, `password_hash` (`pbkdf2$<iters>$<salt>$<hash>`), `updated_at`.
 
 ### 12.4 Dates
 
-`entry_date` and `invoice_date` are stored as **text in `YYYY-MM-DD`** form, representing the IST calendar date the owner selected. This is deliberate: a calendar date is not an instant, and storing it as a timestamp invites off-by-one-day bugs at the timezone boundary. Text dates in this format also sort lexicographically, so the `(entry_date, id)` order key works directly in SQL. `created_at` and `at`, which *are* instants, remain unix epoch integers.
+`entry_date` and `invoice_date` are stored as **text in `YYYY-MM-DD`** form, representing the IST calendar date the owner selected. This is deliberate: a calendar date is not an instant, and storing it as a timestamp invites off-by-one-day bugs at the timezone boundary. Text dates in this format also sort lexicographically, so the `(entry_date, id)` order key works directly in SQL. `created_at` and `at`, which _are_ instants, remain unix epoch integers.
 
 ### 12.5 Indexes
 
@@ -762,10 +763,7 @@ export const transactions = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (t) => [
-    index('idx_tx_dealer').on(t.dealerId, t.entryDate),
-    index('idx_tx_date').on(t.entryDate),
-  ],
+  (t) => [index('idx_tx_dealer').on(t.dealerId, t.entryDate), index('idx_tx_date').on(t.entryDate)],
 );
 
 export const transactionLines = sqliteTable(
@@ -867,30 +865,30 @@ export const appCredentials = sqliteTable('app_credentials', {
 
 A small, explicit JSON API. Every route except the three public auth routes requires a valid session cookie. Every request body is validated with Zod. All money in request and response bodies is **integer paise**.
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/auth/login` | Public. Username + password → session cookie |
-| `GET` | `/api/auth/me` | Public. Returns whether a session is valid |
-| `POST` | `/api/auth/logout` | Public. Clears the session cookie |
-| `POST` | `/api/auth/change-password` | Behind the gate; re-requires the current password |
-| `POST` | `/api/auth/change-username` | Behind the gate; re-requires the current password |
-| `GET` | `/api/dealers?type=&q=&includeArchived=` | Dealer list with inline balances |
-| `POST` | `/api/dealers` | Create a dealer, optionally with an opening position |
-| `GET` | `/api/dealers/:id` | Dealer detail + current balance |
-| `PATCH` | `/api/dealers/:id` | Edit identity fields; archive / unarchive |
-| `GET` | `/api/dealers/:id/ledger?from=&to=&type=&mode=&bankAccount=` | The dealer's history rows with running balances |
-| `POST` | `/api/transactions` | Create a transaction (posts atomically) |
-| `GET` | `/api/transactions?from=&to=&dealerId=&mode=&bankAccount=&cursor=` | Cross-dealer list, paginated |
-| `GET` | `/api/transactions/:id` | Full detail with line items |
-| `PATCH` | `/api/transactions/:id` | Non-financial fields only (notes, reference tag, item name) |
-| `POST` | `/api/transactions/:id/void` | Post the reversal, flag, replay, audit |
-| `POST` | `/api/payments` | Create a payment (posts atomically) |
-| `POST` | `/api/payments/:id/void` | Post the reversal, flag, replay, audit |
-| `GET` | `/api/suggestions?field=item\|unit` | Distinct past values for autocomplete |
-| `GET` | `/api/audit?cursor=` | Read-only audit log, newest first |
-| `GET` | `/api/export/dealer/:id?…` | Rows for the dealer-ledger export |
-| `GET` | `/api/export/transactions?…` | Rows for the all-transactions export |
-| `GET` | `/api/export/balances` | Rows for the dealer-balances export |
+| Method  | Route                                                              | Purpose                                                     |
+| ------- | ------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `POST`  | `/api/auth/login`                                                  | Public. Username + password → session cookie                |
+| `GET`   | `/api/auth/me`                                                     | Public. Returns whether a session is valid                  |
+| `POST`  | `/api/auth/logout`                                                 | Public. Clears the session cookie                           |
+| `POST`  | `/api/auth/change-password`                                        | Behind the gate; re-requires the current password           |
+| `POST`  | `/api/auth/change-username`                                        | Behind the gate; re-requires the current password           |
+| `GET`   | `/api/dealers?type=&q=&includeArchived=`                           | Dealer list with inline balances                            |
+| `POST`  | `/api/dealers`                                                     | Create a dealer, optionally with an opening position        |
+| `GET`   | `/api/dealers/:id`                                                 | Dealer detail + current balance                             |
+| `PATCH` | `/api/dealers/:id`                                                 | Edit identity fields; archive / unarchive                   |
+| `GET`   | `/api/dealers/:id/ledger?from=&to=&type=&mode=&bankAccount=`       | The dealer's history rows with running balances             |
+| `POST`  | `/api/transactions`                                                | Create a transaction (posts atomically)                     |
+| `GET`   | `/api/transactions?from=&to=&dealerId=&mode=&bankAccount=&cursor=` | Cross-dealer list, paginated                                |
+| `GET`   | `/api/transactions/:id`                                            | Full detail with line items                                 |
+| `PATCH` | `/api/transactions/:id`                                            | Non-financial fields only (notes, reference tag, item name) |
+| `POST`  | `/api/transactions/:id/void`                                       | Post the reversal, flag, replay, audit                      |
+| `POST`  | `/api/payments`                                                    | Create a payment (posts atomically)                         |
+| `POST`  | `/api/payments/:id/void`                                           | Post the reversal, flag, replay, audit                      |
+| `GET`   | `/api/suggestions?field=item\|unit`                                | Distinct past values for autocomplete                       |
+| `GET`   | `/api/audit?cursor=`                                               | Read-only audit log, newest first                           |
+| `GET`   | `/api/export/dealer/:id?…`                                         | Rows for the dealer-ledger export                           |
+| `GET`   | `/api/export/transactions?…`                                       | Rows for the all-transactions export                        |
+| `GET`   | `/api/export/balances`                                             | Rows for the dealer-balances export                         |
 
 Error responses carry a stable `code` and a human message, and never echo money or dealer details into logs. Every state-changing route verifies `Origin` / `Sec-Fetch-Site`.
 
@@ -1047,22 +1045,22 @@ No inline scripts (nonces or hashes if ever unavoidable). No CDN fonts or extern
 
 ## 18. Technology Stack & Deployment
 
-| Layer | Choice | Notes |
-| --- | --- | --- |
-| **Frontend** | **Vite + React (TypeScript, strict)** single-page application | Deliberately chosen over Next.js: this is a single-user internal tool with no SEO or SSR requirement, and the SPA + explicit API split keeps the posting layer visible and testable. Fewer moving parts to hand over. |
-| **API** | **Hono** on Cloudflare **Workers** | Small, fast, first-class on Workers, trivial to test. |
-| **Database** | Cloudflare **D1** (SQLite) | **Separate development and production databases are mandatory.** |
-| **ORM** | **Drizzle ORM** + drizzle-kit | The Section 13 schema is written for it. |
-| **Migrations** | `drizzle-kit generate` authors; `wrangler d1 migrations apply` applies | Never hand-edit an applied migration. |
-| **Validation** | **Zod** at every server boundary | Rejects non-integer money and out-of-range input. |
-| **Styling** | **Tailwind CSS v4** with design tokens in one `@theme` block | Tokens are the single source of truth — no hard-coded hex or px in components. |
-| **Icons / fonts** | `lucide-react`; **self-hosted** Inter (`@fontsource-variable/inter`) | No CDN — the CSP forbids it. |
-| **Excel** | **SheetJS (`xlsx`)**, client-side | Keeps the Worker light; see Section 11.2. |
-| **Testing** | **Vitest** for the pure engine; **`@cloudflare/vitest-pool-workers`** for D1-backed integration tests | The Section 6 scenarios are the gating suite. |
-| **Auth** | Single-user username + password: PBKDF2-SHA256 in D1 + HMAC-signed session cookie, all Web Crypto | `AUTH_SECRET` is the only Worker secret. See Section 16.1. |
-| **Backups** | D1 Time Travel (30-day PITR) + `wrangler d1 export` SQL dumps | Card-free. See NFR-B1–B3. |
-| **Package manager** | **pnpm**, with the lockfile committed and the version pinned in `packageManager` | |
-| **CI** | GitHub Actions: typecheck, lint, test, build, `pnpm audit` on every push and pull request; Dependabot on | |
+| Layer               | Choice                                                                                                   | Notes                                                                                                                                                                                                                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Frontend**        | **Vite + React (TypeScript, strict)** single-page application                                            | Deliberately chosen over Next.js: this is a single-user internal tool with no SEO or SSR requirement, and the SPA + explicit API split keeps the posting layer visible and testable. Fewer moving parts to hand over. |
+| **API**             | **Hono** on Cloudflare **Workers**                                                                       | Small, fast, first-class on Workers, trivial to test.                                                                                                                                                                 |
+| **Database**        | Cloudflare **D1** (SQLite)                                                                               | **Separate development and production databases are mandatory.**                                                                                                                                                      |
+| **ORM**             | **Drizzle ORM** + drizzle-kit                                                                            | The Section 13 schema is written for it.                                                                                                                                                                              |
+| **Migrations**      | `drizzle-kit generate` authors; `wrangler d1 migrations apply` applies                                   | Never hand-edit an applied migration.                                                                                                                                                                                 |
+| **Validation**      | **Zod** at every server boundary                                                                         | Rejects non-integer money and out-of-range input.                                                                                                                                                                     |
+| **Styling**         | **Tailwind CSS v4** with design tokens in one `@theme` block                                             | Tokens are the single source of truth — no hard-coded hex or px in components.                                                                                                                                        |
+| **Icons / fonts**   | `lucide-react`; **self-hosted** Inter (`@fontsource-variable/inter`)                                     | No CDN — the CSP forbids it.                                                                                                                                                                                          |
+| **Excel**           | **SheetJS (`xlsx`)**, client-side                                                                        | Keeps the Worker light; see Section 11.2.                                                                                                                                                                             |
+| **Testing**         | **Vitest** for the pure engine; **`@cloudflare/vitest-pool-workers`** for D1-backed integration tests    | The Section 6 scenarios are the gating suite.                                                                                                                                                                         |
+| **Auth**            | Single-user username + password: PBKDF2-SHA256 in D1 + HMAC-signed session cookie, all Web Crypto        | `AUTH_SECRET` is the only Worker secret. See Section 16.1.                                                                                                                                                            |
+| **Backups**         | D1 Time Travel (30-day PITR) + `wrangler d1 export` SQL dumps                                            | Card-free. See NFR-B1–B3.                                                                                                                                                                                             |
+| **Package manager** | **pnpm**, with the lockfile committed and the version pinned in `packageManager`                         |                                                                                                                                                                                                                       |
+| **CI**              | GitHub Actions: typecheck, lint, test, build, `pnpm audit` on every push and pull request; Dependabot on |                                                                                                                                                                                                                       |
 
 **Why not Next.js:** the deprecated `@cloudflare/next-on-pages` path must not be used, and the supported OpenNext-on-Workers path adds an adapter and a build pipeline this application does not need. A Vite SPA plus a Hono API is materially simpler to run, to test, and to hand to a maintainer.
 
@@ -1110,12 +1108,12 @@ If the owner forgets the password, recovery is a maintainer operation: re-run th
 
 ## 20. Testing Strategy
 
-| Level | Tool | Covers |
-| --- | --- | --- |
-| **Pure unit** | Vitest | The money-math module (`roundPaise`, line amount, GST, round-to-rupee, `formatPaise`, `parseRupeesToPaise`), and the pure ledger engine including all six Section 6 scenarios |
+| Level           | Tool                                               | Covers                                                                                                                                                                                                                        |
+| --------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pure unit**   | Vitest                                             | The money-math module (`roundPaise`, line amount, GST, round-to-rupee, `formatPaise`, `parseRupeesToPaise`), and the pure ledger engine including all six Section 6 scenarios                                                 |
 | **Integration** | `@cloudflare/vitest-pool-workers` against local D1 | The posting layer end to end: the Section 6 scenarios through the real database path, atomic-batch rollback on a forced mid-batch failure, back-dated insert triggering replay, void and replay, human-ID sequence generation |
-| **API** | Same runner | Auth gate (401 unauthenticated, 401 wrong password, session mints and verifies), Zod rejection of float money and future dates, CSRF origin checks |
-| **Export** | Vitest | The row-builder shared by the Excel and CSV writers: money converts exactly, voided rows are present and flagged, the totals row sums correctly |
+| **API**         | Same runner                                        | Auth gate (401 unauthenticated, 401 wrong password, session mints and verifies), Zod rejection of float money and future dates, CSRF origin checks                                                                            |
+| **Export**      | Vitest                                             | The row-builder shared by the Excel and CSV writers: money converts exactly, voided rows are present and flagged, the totals row sums correctly                                                                               |
 
 **Gating rule:** all six Section 6 scenarios must pass at **both** the pure and the D1-integration level before the ledger is considered complete. CI runs typecheck, lint, the full suite, the build, and `pnpm audit` on every push.
 
@@ -1217,20 +1215,20 @@ Each phase has a gate. Do not begin the next phase until the current gate is gre
 
 For anyone who has read the earlier specification, this is precisely what changed and why.
 
-| # | Earlier specification | This edition | Consequence |
-| --- | --- | --- | --- |
-| 1 | Every shipment valued twice — an **actual** rate and a **current** (declared) rate | **One rate per line** | `transaction_lines` loses `current_rate_paise` and `current_amount_paise`; the transaction form loses a whole column |
-| 2 | **Two** running balances per dealer (actual and current), with Actual/Current tabs | **One** running balance per dealer | `ledger_entries` loses its `account` column; every posting writes one row instead of two; the dealer screen loses its tabs |
-| 3 | GST computed on the **current** value but posted as cash to the **actual** account | GST computed on the one taxable value and posted with it | The single most confusing rule in the earlier document is gone |
-| 4 | GST rate entered **per line** | GST rate entered **per transaction**, pre-filled at 18% | A mixed-rate docket becomes two transactions (Section 22) |
-| 5 | Tax type intra / inter / none, with a CGST + SGST versus IGST split | **Removed** — a single GST amount | Display-only simplification; the ledger was never affected by the split |
-| 6 | Money movements carried an `account_scope` (actual / current / both) | **Removed** — a payment posts once | The `money_movements` table becomes `payments` and loses the field |
-| 7 | Item name **required** on every line | Item name **optional** | Matches how the owner actually records quick entries |
-| 8 | No bank account concept | **`bank_account` tag (OD / Current)** on transactions and payments | New column, new form control, new filter, new export column — a tag only, never a second balance |
-| 9 | Export not specified | **Excel and CSV export** is a specified, first-class feature (Section 11) | New module, new API routes, new tests |
-| 10 | Dates stored as unix timestamps | `entry_date` stored as `YYYY-MM-DD` text | Removes a class of timezone off-by-one-day bugs |
-| 11 | Framework decision left open (Next.js + OpenNext or Vite + Hono) | **Decided: Vite + React + Hono** | One fewer decision at the start of the build |
-| 12 | Four acceptance scenarios | **Six** — void/replay and the bank-tag invariant are now explicitly gated | The two rules most likely to be got wrong are now tested |
+| #   | Earlier specification                                                              | This edition                                                              | Consequence                                                                                                                |
+| --- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Every shipment valued twice — an **actual** rate and a **current** (declared) rate | **One rate per line**                                                     | `transaction_lines` loses `current_rate_paise` and `current_amount_paise`; the transaction form loses a whole column       |
+| 2   | **Two** running balances per dealer (actual and current), with Actual/Current tabs | **One** running balance per dealer                                        | `ledger_entries` loses its `account` column; every posting writes one row instead of two; the dealer screen loses its tabs |
+| 3   | GST computed on the **current** value but posted as cash to the **actual** account | GST computed on the one taxable value and posted with it                  | The single most confusing rule in the earlier document is gone                                                             |
+| 4   | GST rate entered **per line**                                                      | GST rate entered **per transaction**, pre-filled at 18%                   | A mixed-rate docket becomes two transactions (Section 22)                                                                  |
+| 5   | Tax type intra / inter / none, with a CGST + SGST versus IGST split                | **Removed** — a single GST amount                                         | Display-only simplification; the ledger was never affected by the split                                                    |
+| 6   | Money movements carried an `account_scope` (actual / current / both)               | **Removed** — a payment posts once                                        | The `money_movements` table becomes `payments` and loses the field                                                         |
+| 7   | Item name **required** on every line                                               | Item name **optional**                                                    | Matches how the owner actually records quick entries                                                                       |
+| 8   | No bank account concept                                                            | **`bank_account` tag (OD / Current)** on transactions and payments        | New column, new form control, new filter, new export column — a tag only, never a second balance                           |
+| 9   | Export not specified                                                               | **Excel and CSV export** is a specified, first-class feature (Section 11) | New module, new API routes, new tests                                                                                      |
+| 10  | Dates stored as unix timestamps                                                    | `entry_date` stored as `YYYY-MM-DD` text                                  | Removes a class of timezone off-by-one-day bugs                                                                            |
+| 11  | Framework decision left open (Next.js + OpenNext or Vite + Hono)                   | **Decided: Vite + React + Hono**                                          | One fewer decision at the start of the build                                                                               |
+| 12  | Four acceptance scenarios                                                          | **Six** — void/replay and the bank-tag invariant are now explicitly gated | The two rules most likely to be got wrong are now tested                                                                   |
 
 **Unchanged and non-negotiable:** integer paise everywhere; the sign convention and plain-language balance; append-only ledger with reversing entries and replay; atomic `db.batch` writes; the audit log; the single-user password gate; separate development and production databases; card-free backups with a verified restore.
 

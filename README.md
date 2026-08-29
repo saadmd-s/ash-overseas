@@ -31,16 +31,16 @@ never splits a balance either.
 **[SRS.md](SRS.md) is authoritative on every business rule.** Everything else is
 derived from it — where they disagree, the SRS wins.
 
-| Document | What it covers |
-| --- | --- |
-| **[SRS.md](SRS.md)** | The specification. Authoritative. |
-| [CLAUDE.md](CLAUDE.md) | Developer rules summary — read this before writing code |
-| [docs/PRD.md](docs/PRD.md) | Why it's being built, who for, what counts as done |
-| [docs/TRD.md](docs/TRD.md) | Architecture, module contracts, stack, engineering constraints |
-| [docs/APP_FLOW.md](docs/APP_FLOW.md) | Screen-by-screen paths, states, validation gates |
-| [docs/UIUX.md](docs/UIUX.md) | Components, tokens, copy rules, accessibility |
-| [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md) | DDL, invariants, query patterns, schema gaps |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phased build plan and definition of done |
+| Document                                                   | What it covers                                                 |
+| ---------------------------------------------------------- | -------------------------------------------------------------- |
+| **[SRS.md](SRS.md)**                                       | The specification. Authoritative.                              |
+| [CLAUDE.md](CLAUDE.md)                                     | Developer rules summary — read this before writing code        |
+| [docs/PRD.md](docs/PRD.md)                                 | Why it's being built, who for, what counts as done             |
+| [docs/TRD.md](docs/TRD.md)                                 | Architecture, module contracts, stack, engineering constraints |
+| [docs/APP_FLOW.md](docs/APP_FLOW.md)                       | Screen-by-screen paths, states, validation gates               |
+| [docs/UIUX.md](docs/UIUX.md)                               | Components, tokens, copy rules, accessibility                  |
+| [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md)           | DDL, invariants, query patterns, schema gaps                   |
+| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phased build plan and definition of done                       |
 
 ## Documentation status
 
@@ -72,14 +72,14 @@ Six scenarios in SRS §6, A–F. They are the primary acceptance tests and **mus
 implemented as automated tests before the ledger is considered complete**,
 reproducing every figure exactly:
 
-| | Covers | Key figure |
-| --- | --- | --- |
-| A | goods and money both ways | ends −3,23,000 |
-| B | GST round-off | 2,69,323.20 → posts 2,69,323, round-off −20 paise |
-| C | advance against two shipments | ends −3,19,592 |
-| D | balance crossing zero | −3,19,592 → +34,408 |
-| E | void and replay | returns to −5,39,544 |
-| F | bank tag does not split | one headline of +1,77,000 |
+|     | Covers                        | Key figure                                        |
+| --- | ----------------------------- | ------------------------------------------------- |
+| A   | goods and money both ways     | ends −3,23,000                                    |
+| B   | GST round-off                 | 2,69,323.20 → posts 2,69,323, round-off −20 paise |
+| C   | advance against two shipments | ends −3,19,592                                    |
+| D   | balance crossing zero         | −3,19,592 → +34,408                               |
+| E   | void and replay               | returns to −5,39,544                              |
+| F   | bank tag does not split       | one headline of +1,77,000                         |
 
 ## Stack
 

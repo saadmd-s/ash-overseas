@@ -41,11 +41,11 @@ Every route is behind the auth gate. There is no public page (FR-U3).
 
 ## 2. Entry Points
 
-| Entry | Lands on | Notes |
-| --- | --- | --- |
-| App icon (installed PWA) | Home, or Login if no valid session | Shell served from cache; data always from network |
-| Direct URL | Requested screen, or Login with a return path | |
-| Session expiry mid-use | Login, with unsaved form draft preserved in `localStorage` | Draft survives; see §7.2 |
+| Entry                    | Lands on                                                   | Notes                                             |
+| ------------------------ | ---------------------------------------------------------- | ------------------------------------------------- |
+| App icon (installed PWA) | Home, or Login if no valid session                         | Shell served from cache; data always from network |
+| Direct URL               | Requested screen, or Login with a return path              |                                                   |
+| Session expiry mid-use   | Login, with unsaved form draft preserved in `localStorage` | Draft survives; see §7.2                          |
 
 ## 3. Authentication Flow
 
@@ -276,16 +276,16 @@ Browser download: <Dealer>-ledger-<YYYY-MM-DD>.xlsx
 
 Every screen defines loading, empty, and error states explicitly (§10.10).
 
-| Screen | Loading | Empty | Error |
-| --- | --- | --- | --- |
-| Home | Skeleton dealer rows | "No dealers yet" + New dealer CTA | Retry, no figures shown |
-| Dealer list | Skeleton rows | "No suppliers yet" / "No buyers yet" | Retry |
-| Dealer detail | Skeleton headline + rows | Headline "Settled" + "No entries yet" | **Error instead of a number** — never a guessed balance |
-| Transaction form | Disabled save | n/a | Inline field errors; input preserved |
-| Payment form | Disabled save | n/a | Inline field errors; input preserved |
-| All transactions | Skeleton rows | "No transactions match these filters" | Retry |
-| Audit log | Skeleton rows | "No activity yet" | Retry |
-| Export | Progress indicator | "Nothing to export in this range" | Actionable error, no partial file |
+| Screen           | Loading                  | Empty                                 | Error                                                   |
+| ---------------- | ------------------------ | ------------------------------------- | ------------------------------------------------------- |
+| Home             | Skeleton dealer rows     | "No dealers yet" + New dealer CTA     | Retry, no figures shown                                 |
+| Dealer list      | Skeleton rows            | "No suppliers yet" / "No buyers yet"  | Retry                                                   |
+| Dealer detail    | Skeleton headline + rows | Headline "Settled" + "No entries yet" | **Error instead of a number** — never a guessed balance |
+| Transaction form | Disabled save            | n/a                                   | Inline field errors; input preserved                    |
+| Payment form     | Disabled save            | n/a                                   | Inline field errors; input preserved                    |
+| All transactions | Skeleton rows            | "No transactions match these filters" | Retry                                                   |
+| Audit log        | Skeleton rows            | "No activity yet"                     | Retry                                                   |
+| Export           | Progress indicator       | "Nothing to export in this range"     | Actionable error, no partial file                       |
 
 **The dealer detail error state matters most.** If the balance cannot be computed
 with certainty, the screen shows an error, never a number. A wrong figure shown
@@ -296,30 +296,30 @@ confidently is worse than no figure.
 Client-side validation gives fast feedback; **server-side validation is
 authoritative and re-runs in full** (§10.9).
 
-| Field | Rule | Where it fails |
-| --- | --- | --- |
-| Quantity | Required, number ≥ 0 | Inline, on blur |
-| Rate | Required, integer paise ≥ 0 | Inline, on blur |
-| Line count | ≥ 1 per transaction | Save blocked |
-| GST rate | 0–100 inclusive | Inline |
-| Payment amount | Integer paise, strictly > 0 | Inline |
-| Discount | Integer paise ≥ 0, **may not exceed base total** | On totals recompute |
-| Freight | Integer paise ≥ 0 | Inline |
-| Date | Required, not later than today **in IST** | Date picker max |
-| Dealer | Must exist and not be archived | Picker excludes archived |
-| Bank account | Required on transactions; `od` or `current` | Save blocked |
-| Money fields | Integer paise only — floats, `NaN`, out-of-range rejected | **Server boundary, always** |
+| Field          | Rule                                                      | Where it fails              |
+| -------------- | --------------------------------------------------------- | --------------------------- |
+| Quantity       | Required, number ≥ 0                                      | Inline, on blur             |
+| Rate           | Required, integer paise ≥ 0                               | Inline, on blur             |
+| Line count     | ≥ 1 per transaction                                       | Save blocked                |
+| GST rate       | 0–100 inclusive                                           | Inline                      |
+| Payment amount | Integer paise, strictly > 0                               | Inline                      |
+| Discount       | Integer paise ≥ 0, **may not exceed base total**          | On totals recompute         |
+| Freight        | Integer paise ≥ 0                                         | Inline                      |
+| Date           | Required, not later than today **in IST**                 | Date picker max             |
+| Dealer         | Must exist and not be archived                            | Picker excludes archived    |
+| Bank account   | Required on transactions; `od` or `current`               | Save blocked                |
+| Money fields   | Integer paise only — floats, `NaN`, out-of-range rejected | **Server boundary, always** |
 
 ## 11. Error and Recovery Paths
 
-| Situation | Behaviour |
-| --- | --- |
-| Network drops mid-form | Draft persists in `localStorage`; form restores on return |
-| Save fails | Input preserved, actionable error, draft **not** cleared |
-| Session expires mid-form | Redirect to Login; draft survives; returns to the form after sign-in |
-| Batch write fails | **Zero partial rows** — no transaction header without its ledger entry (§15.3) |
+| Situation                       | Behaviour                                                                                      |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Network drops mid-form          | Draft persists in `localStorage`; form restores on return                                      |
+| Save fails                      | Input preserved, actionable error, draft **not** cleared                                       |
+| Session expires mid-form        | Redirect to Login; draft survives; returns to the form after sign-in                           |
+| Batch write fails               | **Zero partial rows** — no transaction header without its ledger entry (§15.3)                 |
 | Stale running balance suspected | `recomputeLedger(dealerId)` replays from zero; divergence is a defect, not a rounding artefact |
-| Offline launch | Shell loads from cache; **no financial data shown** — network-only for `/api/*` |
+| Offline launch                  | Shell loads from cache; **no financial data shown** — network-only for `/api/*`                |
 
 ## 12. Data Freshness
 
@@ -327,6 +327,6 @@ The service worker precaches the application shell only. Every `/api/*` request
 is **network-only** — no stale-while-revalidate, no offline fallback that could
 render a figure (§10.10).
 
-The reasoning is stated plainly in the SRS and is worth repeating: *a stale
-balance is a dangerous balance.* The owner may be standing in front of the dealer
+The reasoning is stated plainly in the SRS and is worth repeating: _a stale
+balance is a dangerous balance._ The owner may be standing in front of the dealer
 when they read it.

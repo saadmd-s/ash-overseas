@@ -19,14 +19,14 @@ and documentation only — no application code, no `package.json`, no toolchain.
 All derived from the SRS and reconciled against the complete text. Where any of
 them disagrees with SRS.md, the SRS wins.
 
-| Document | Read it when |
-| --- | --- |
-| [docs/PRD.md](docs/PRD.md) | You need the why, the users, or the success criteria |
-| [docs/TRD.md](docs/TRD.md) | Architecture, module contracts, the non-negotiables list |
-| [docs/APP_FLOW.md](docs/APP_FLOW.md) | Building a screen or a route; states and validation gates |
-| [docs/UIUX.md](docs/UIUX.md) | Building UI; components, copy rules, accessibility |
-| [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md) | Touching the database; DDL, invariants, queries |
-| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Deciding what to build next |
+| Document                                                   | Read it when                                              |
+| ---------------------------------------------------------- | --------------------------------------------------------- |
+| [docs/PRD.md](docs/PRD.md)                                 | You need the why, the users, or the success criteria      |
+| [docs/TRD.md](docs/TRD.md)                                 | Architecture, module contracts, the non-negotiables list  |
+| [docs/APP_FLOW.md](docs/APP_FLOW.md)                       | Building a screen or a route; states and validation gates |
+| [docs/UIUX.md](docs/UIUX.md)                               | Building UI; components, copy rules, accessibility        |
+| [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md)           | Touching the database; DDL, invariants, queries           |
+| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Deciding what to build next                               |
 
 ---
 
@@ -52,7 +52,7 @@ and still has one balance.
 
 ### 3. The bank account tag (OD / Current) is a tag
 
-It records which of the *business's own* accounts the money ran through, for
+It records which of the _business's own_ accounts the money ran through, for
 filtering and export subtotals. It never splits a balance, never changes a
 posting rule, never affects the headline. Filtering the history by it must not
 change the headline or the running-balance column — show a "showing N of M
@@ -93,14 +93,14 @@ rows is an explicit integration test. (SRS §15.3)
 
 ## Posting rules (SRS §7)
 
-| Event | Effect | Amount |
-| --- | --- | --- |
-| Sale (goods to dealer) | debit | rounded grand total |
-| Purchase (goods from dealer) | credit | rounded grand total |
-| Money received from dealer | credit | amount |
-| Money paid to dealer | debit | amount |
-| Opening position | as entered | opening amount |
-| Void | reversing entry | the original posted amount |
+| Event                        | Effect          | Amount                     |
+| ---------------------------- | --------------- | -------------------------- |
+| Sale (goods to dealer)       | debit           | rounded grand total        |
+| Purchase (goods from dealer) | credit          | rounded grand total        |
+| Money received from dealer   | credit          | amount                     |
+| Money paid to dealer         | debit           | amount                     |
+| Opening position             | as entered      | opening amount             |
+| Void                         | reversing entry | the original posted amount |
 
 A return / credit-debit note posts **opposite** to its mode: a sale return
 credits, a purchase return debits.
@@ -127,14 +127,14 @@ No GST master, no HSN master, no CGST/SGST/IGST split in this edition.
 Six scenarios, A–F. **Implement them as automated tests before the ledger is
 considered complete**, and reproduce every figure exactly:
 
-| | Covers | Key figure |
-| --- | --- | --- |
-| A | goods and money both ways | ends −3,23,000 |
-| B | GST round-off | 2,69,323.20 → posts 2,69,323, `round_off_paise = −20` |
-| C | advance against two shipments | ends −3,19,592 |
-| D | balance crossing zero | −3,19,592 → +34,408 |
-| E | void and replay | returns to −5,39,544 |
-| F | bank tag does not split | one headline of +1,77,000 |
+|     | Covers                        | Key figure                                            |
+| --- | ----------------------------- | ----------------------------------------------------- |
+| A   | goods and money both ways     | ends −3,23,000                                        |
+| B   | GST round-off                 | 2,69,323.20 → posts 2,69,323, `round_off_paise = −20` |
+| C   | advance against two shipments | ends −3,19,592                                        |
+| D   | balance crossing zero         | −3,19,592 → +34,408                                   |
+| E   | void and replay               | returns to −5,39,544                                  |
+| F   | bank tag does not split       | one headline of +1,77,000                             |
 
 ## Architecture
 
@@ -185,7 +185,7 @@ stale balance is a dangerous balance.
 **SRS Appendix B is the reference implementation — copy it verbatim.** Two easy
 mistakes: `transactionTotals` takes `linesPaise: number[]` (already-computed line
 amounts, not quantity/rate pairs), and it does **not** return `rawTotalPaise`.
-`roundPaise` rounds half *away from zero*, which is deliberate — do not "fix" it.
+`roundPaise` rounds half _away from zero_, which is deliberate — do not "fix" it.
 
 `parseRupeesToPaise` is required by §20 but absent from Appendix B; implement it
 to the §10.6 rules.

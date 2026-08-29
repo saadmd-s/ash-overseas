@@ -6,8 +6,8 @@
 **Status:** Derived from [SRS.md](../SRS.md)
 
 > **[SRS.md](../SRS.md) is authoritative on every business rule.** This PRD
-> exists to state *why* the product is being built, *who* it is for, and *what
-> counts as done*. Where a figure or rule appears in both, the SRS wins.
+> exists to state _why_ the product is being built, _who_ it is for, and _what
+> counts as done_. Where a figure or rule appears in both, the SRS wins.
 >
 > **The SRS is complete** (transcribed in full, 29 Aug 2026). This document is
 > reconciled against it.
@@ -48,11 +48,11 @@ filing.
 
 ## 3. Users
 
-| User | Role | Needs |
-| --- | --- | --- |
-| **The owner** | The only operational user | Enter a shipment or payment in under a minute on a phone, mid-conversation. See any dealer's net position at a glance. Export for the accountant. |
-| **The maintainer** | Owns the repo and the Cloudflare account | Deploy, migrate, and recover credentials. Does **not** use the app for business. |
-| **The accountant** | Indirect — receives exports | A spreadsheet that sorts, filters, and `SUM`s without cleaning. |
+| User               | Role                                     | Needs                                                                                                                                             |
+| ------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The owner**      | The only operational user                | Enter a shipment or payment in under a minute on a phone, mid-conversation. See any dealer's net position at a glance. Export for the accountant. |
+| **The maintainer** | Owns the repo and the Cloudflare account | Deploy, migrate, and recover credentials. Does **not** use the app for business.                                                                  |
+| **The accountant** | Indirect — receives exports              | A spreadsheet that sorts, filters, and `SUM`s without cleaning.                                                                                   |
 
 There is no sign-up, no multi-user role system, and no public route (FR-U3).
 
@@ -112,7 +112,7 @@ consolidated balance.
 
 ### P3 — The bank account tag is a tag
 
-OD vs Current records which of the *business's own* accounts the money ran
+OD vs Current records which of the _business's own_ accounts the money ran
 through, so the owner can ask "what went through the OD this month?" and so
 exports can be subtotalled. It never splits a balance, never changes a posting
 rule, and never affects the headline figure.
@@ -193,51 +193,51 @@ change re-requiring the current password. Recovery is a maintainer operation.
 **Per SRS §23.** Each phase has a gate; the next does not begin until it is
 green. Detail in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
-| Phase | Contents | Done when |
-| --- | --- | --- |
-| **1 — Ledger core** | Money-math module, pure ledger engine, D1 schema, migrations | All six §6 scenarios pass as automated tests against the pure engine |
-| **2 — Posting & API** | Posting layer on `db.batch`, auth gate, dealer/transaction/payment routes | Mid-batch failure leaves zero partial rows (§15.3 integration test) |
-| **3 — Interface** | Home, dealer list, dealer detail, transaction form, payment form | Owner can complete Scenario A end-to-end on a phone |
-| **4 — Export** | Shared row-builder, SheetJS writer, CSV writer, three exports | Exported figures reconcile exactly with on-screen figures |
-| **5 — Hardening** | Audit view, PWA shell, accessibility pass, error states | AA contrast, no colour-only meaning, all states defined |
+| Phase                 | Contents                                                                  | Done when                                                            |
+| --------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **1 — Ledger core**   | Money-math module, pure ledger engine, D1 schema, migrations              | All six §6 scenarios pass as automated tests against the pure engine |
+| **2 — Posting & API** | Posting layer on `db.batch`, auth gate, dealer/transaction/payment routes | Mid-batch failure leaves zero partial rows (§15.3 integration test)  |
+| **3 — Interface**     | Home, dealer list, dealer detail, transaction form, payment form          | Owner can complete Scenario A end-to-end on a phone                  |
+| **4 — Export**        | Shared row-builder, SheetJS writer, CSV writer, three exports             | Exported figures reconcile exactly with on-screen figures            |
+| **5 — Hardening**     | Audit view, PWA shell, accessibility pass, error states                   | AA contrast, no colour-only meaning, all states defined              |
 
 ## 8. Success Criteria
 
 The product is successful when the notebook is closed for good. Concretely:
 
-| # | Criterion | Measure |
-| --- | --- | --- |
-| **S1** | Every §6 figure reproduces exactly | Six automated acceptance tests pass |
-| **S2** | Entry is faster than the notebook | A single-line transaction saved in under 60s on a phone |
-| **S3** | The balance is never wrong | Replay from zero always equals the stored running balance |
-| **S4** | No entry is ever lost | Zero hard deletes; every correction has a linked reversal and an audit row |
+| #      | Criterion                              | Measure                                                                                  |
+| ------ | -------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **S1** | Every §6 figure reproduces exactly     | Six automated acceptance tests pass                                                      |
+| **S2** | Entry is faster than the notebook      | A single-line transaction saved in under 60s on a phone                                  |
+| **S3** | The balance is never wrong             | Replay from zero always equals the stored running balance                                |
+| **S4** | No entry is ever lost                  | Zero hard deletes; every correction has a linked reversal and an audit row               |
 | **S5** | The accountant does not clean the file | Export opens in Excel with money as numbers and dates as dates, `SUM` works on first try |
-| **S6** | Direction is never misread | Every balance carries icon + text; no colour-only signalling |
+| **S6** | Direction is never misread             | Every balance carries icon + text; no colour-only signalling                             |
 
 ## 9. Risks
 
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| A float creeps into money handling | Silent, compounding corruption of every balance | Integer paise everywhere; one money-math module owns all arithmetic; lint rule banning `parseFloat`/`toFixed` in money paths |
-| D1 has no interactive transactions | A half-written transaction leaves an orphaned ledger entry and a wrong balance | Every multi-row write is one `db.batch([...])`; forced mid-batch failure is an explicit test (§15.3) |
-| Bank tag is mistaken for a second ledger | Balances split; the core promise breaks | Scenario F as a test; filter shows "N of M" notice; headline computed over all entries always |
-| PWA caches a stale balance | Owner negotiates on a wrong figure | Cache the app shell **only**; never cache financial data (§10.10) |
-| Back-dated entry inserted after later entries | Running balances below it are stale | §15.6: post the row, then `recomputeLedger(dealerId)`. The stored balance is never left stale |
-| Backup exists but was never restored | Discovering at the worst moment that it does not work | NFR-B3 makes a **verified** restore the gate, not a document |
-| PBKDF2 iterations pass tests, fail in production | The app cannot be deployed, or worse, ships ungated | §16.1 caps iterations at 100,000; assert the constant in a test |
+| Risk                                             | Impact                                                                         | Mitigation                                                                                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| A float creeps into money handling               | Silent, compounding corruption of every balance                                | Integer paise everywhere; one money-math module owns all arithmetic; lint rule banning `parseFloat`/`toFixed` in money paths |
+| D1 has no interactive transactions               | A half-written transaction leaves an orphaned ledger entry and a wrong balance | Every multi-row write is one `db.batch([...])`; forced mid-batch failure is an explicit test (§15.3)                         |
+| Bank tag is mistaken for a second ledger         | Balances split; the core promise breaks                                        | Scenario F as a test; filter shows "N of M" notice; headline computed over all entries always                                |
+| PWA caches a stale balance                       | Owner negotiates on a wrong figure                                             | Cache the app shell **only**; never cache financial data (§10.10)                                                            |
+| Back-dated entry inserted after later entries    | Running balances below it are stale                                            | §15.6: post the row, then `recomputeLedger(dealerId)`. The stored balance is never left stale                                |
+| Backup exists but was never restored             | Discovering at the worst moment that it does not work                          | NFR-B3 makes a **verified** restore the gate, not a document                                                                 |
+| PBKDF2 iterations pass tests, fail in production | The app cannot be deployed, or worse, ships ungated                            | §16.1 caps iterations at 100,000; assert the constant in a test                                                              |
 
 ## 10. Open Product Questions
 
 ### 10.1 Answered
 
-| Question | Answer | Source |
-| --- | --- | --- |
-| Framework | **Vite + React + Hono on Workers** | Owner 29 Aug; **confirmed by SRS §18** |
-| Human-ID sequence storage | **Dedicated `id_sequences` table** | Owner 29 Aug; still absent from the SRS |
-| Backup and retention | **D1 Time Travel + `wrangler d1 export` SQL dumps. No R2 — it needs a card on file.** | Owner 29 Aug; **confirmed by §17.3 NFR-B1–B3** |
-| Session lifetime | **30-day cookie, no inactivity lock** | Owner 29 Aug; **confirmed by §16.1** |
-| Login throttling | **~½ second delay before a wrong login's 401.** No lockout. | §16.1 |
-| Credential recovery | **Maintainer re-runs the login-setup script** against production. No email reset. | §19.5 |
+| Question                  | Answer                                                                                | Source                                         |
+| ------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Framework                 | **Vite + React + Hono on Workers**                                                    | Owner 29 Aug; **confirmed by SRS §18**         |
+| Human-ID sequence storage | **Dedicated `id_sequences` table**                                                    | Owner 29 Aug; still absent from the SRS        |
+| Backup and retention      | **D1 Time Travel + `wrangler d1 export` SQL dumps. No R2 — it needs a card on file.** | Owner 29 Aug; **confirmed by §17.3 NFR-B1–B3** |
+| Session lifetime          | **30-day cookie, no inactivity lock**                                                 | Owner 29 Aug; **confirmed by §16.1**           |
+| Login throttling          | **~½ second delay before a wrong login's 401.** No lockout.                           | §16.1                                          |
+| Credential recovery       | **Maintainer re-runs the login-setup script** against production. No email reset.     | §19.5                                          |
 
 The restore gap this document previously raised is **closed**: §17.3 specifies a
 SQL dump, which restores. §11.5's "not re-importable" applies only to the
@@ -272,16 +272,16 @@ All non-blocking, all the owner's call, all confirmable during the build:
 
 ## Traceability
 
-| PRD section | SRS source |
-| --- | --- |
-| §1 Problem | §3.1, §3.2 |
-| §3 Users | §1.3, §3.3 |
-| §5 Principles | §4.1, §4.2, §4.3, §5 |
-| §6.1 Dealers | §9.1 (FR-D1…D6) |
-| §6.2 Goods | §9.2 (FR-T1…T10), §8 |
-| §6.3 Money | §9.3 (FR-P1…P3) |
-| §6.4 Position | §9.4 (FR-L1…L5), §9.6 (FR-N1…N4) |
-| §6.5 Corrections | §9.5 (FR-A1…A6) |
-| §6.6 Export | §9.7 (FR-X1…X5), §11 |
-| §6.7 Auth | §9.8 (FR-U1…U3) |
-| §8 Success criteria | §6 scenarios A–F |
+| PRD section         | SRS source                       |
+| ------------------- | -------------------------------- |
+| §1 Problem          | §3.1, §3.2                       |
+| §3 Users            | §1.3, §3.3                       |
+| §5 Principles       | §4.1, §4.2, §4.3, §5             |
+| §6.1 Dealers        | §9.1 (FR-D1…D6)                  |
+| §6.2 Goods          | §9.2 (FR-T1…T10), §8             |
+| §6.3 Money          | §9.3 (FR-P1…P3)                  |
+| §6.4 Position       | §9.4 (FR-L1…L5), §9.6 (FR-N1…N4) |
+| §6.5 Corrections    | §9.5 (FR-A1…A6)                  |
+| §6.6 Export         | §9.7 (FR-X1…X5), §11             |
+| §6.7 Auth           | §9.8 (FR-U1…U3)                  |
+| §8 Success criteria | §6 scenarios A–F                 |

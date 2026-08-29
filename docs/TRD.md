@@ -71,20 +71,20 @@ database. This is the single most important structural decision in the codebase.
 
 ### 3.1 Vite + React + Hono on Workers
 
-| Layer | Choice | Rationale |
-| --- | --- | --- |
-| Runtime | Cloudflare Workers | Stated in SRS §13 (D1 binding), §11.2 (Worker CPU budget) |
-| Database | Cloudflare D1 (SQLite) | Stated, SRS §13 |
-| ORM | Drizzle | Stated, SRS §13, with `drizzle-kit generate` |
-| API framework | Hono | Minimal, Workers-native, tiny CPU and bundle cost |
-| Frontend | Vite + React (SPA) | Client-rendered; no SEO need; keeps the Worker thin |
-| Validation | Zod | Stated, SRS §10.9, §14 |
-| Export | SheetJS (`xlsx`), client-side | Stated, SRS §11.2 |
-| Tests | Vitest + `@cloudflare/vitest-pool-workers` | Runs integration tests against real D1 semantics |
-| Styling | Tailwind CSS v4, tokens in one `@theme` block | §18 — tokens are the single source of truth, no hard-coded hex or px |
-| Icons / fonts | `lucide-react`; self-hosted Inter (`@fontsource-variable/inter`) | §18 — no CDN, the CSP forbids it |
-| Package manager | pnpm, lockfile committed, version pinned in `packageManager` | §18 |
-| CI | GitHub Actions: typecheck, lint, test, build, `pnpm audit` | §18, §20 |
+| Layer           | Choice                                                           | Rationale                                                            |
+| --------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Runtime         | Cloudflare Workers                                               | Stated in SRS §13 (D1 binding), §11.2 (Worker CPU budget)            |
+| Database        | Cloudflare D1 (SQLite)                                           | Stated, SRS §13                                                      |
+| ORM             | Drizzle                                                          | Stated, SRS §13, with `drizzle-kit generate`                         |
+| API framework   | Hono                                                             | Minimal, Workers-native, tiny CPU and bundle cost                    |
+| Frontend        | Vite + React (SPA)                                               | Client-rendered; no SEO need; keeps the Worker thin                  |
+| Validation      | Zod                                                              | Stated, SRS §10.9, §14                                               |
+| Export          | SheetJS (`xlsx`), client-side                                    | Stated, SRS §11.2                                                    |
+| Tests           | Vitest + `@cloudflare/vitest-pool-workers`                       | Runs integration tests against real D1 semantics                     |
+| Styling         | Tailwind CSS v4, tokens in one `@theme` block                    | §18 — tokens are the single source of truth, no hard-coded hex or px |
+| Icons / fonts   | `lucide-react`; self-hosted Inter (`@fontsource-variable/inter`) | §18 — no CDN, the CSP forbids it                                     |
+| Package manager | pnpm, lockfile committed, version pinned in `packageManager`     | §18                                                                  |
+| CI              | GitHub Actions: typecheck, lint, test, build, `pnpm audit`       | §18, §20                                                             |
 
 **Why not Next.js (§18).** The deprecated `@cloudflare/next-on-pages` path must
 not be used, and the supported OpenNext-on-Workers path adds an adapter and a
@@ -140,7 +140,7 @@ codebase.** This is enforced by review and by a lint rule.
 > signatures below are transcribed from it, not derived. Implement it verbatim.
 
 ```ts
-type Paise = number;  // integer, exact below 2^53 (≈ ₹90 trillion)
+type Paise = number; // integer, exact below 2^53 (≈ ₹90 trillion)
 
 /** The only rounding primitive. Math.sign(v) * Math.round(Math.abs(v)). */
 function roundPaise(value: number): Paise;
@@ -156,7 +156,7 @@ function gstAmount(taxablePaise: Paise, gstRate: number): Paise;
 
 /** The full transaction total, exactly as posted to the ledger. */
 function transactionTotals(input: {
-  linesPaise: Paise[];        // NOTE: already-computed line amounts, not quantity/rate pairs
+  linesPaise: Paise[]; // NOTE: already-computed line amounts, not quantity/rate pairs
   discountPaise: Paise;
   freightPaise: Paise;
   gstRate: number;
@@ -164,9 +164,9 @@ function transactionTotals(input: {
   baseTotalPaise: Paise;
   taxablePaise: Paise;
   gstAmountPaise: Paise;
-  roundOffPaise: Paise;       // may be negative
+  roundOffPaise: Paise; // may be negative
   grandTotalPaise: Paise;
-};                            // NOTE: rawTotalPaise is internal, not returned
+}; // NOTE: rawTotalPaise is internal, not returned
 
 /** Display only. Formats from paise so no float artefact can appear. */
 function formatPaise(paise: Paise): string;
@@ -220,12 +220,22 @@ to post. The §6 scenarios exercise it directly, with no D1 in the test.
 
 ```ts
 type LedgerEvent =
-  | { kind: 'transaction'; mode: 'purchase' | 'sale'; isReturnNote: boolean;
-      grandTotalPaise: Paise; entryDate: string; bankAccount: BankAccount }
-  | { kind: 'payment'; direction: 'received' | 'paid';
-      amountPaise: Paise; entryDate: string; bankAccount: BankAccount | null }
-  | { kind: 'opening'; direction: 'owes_us' | 'we_owe'; amountPaise: Paise;
-      entryDate: string }
+  | {
+      kind: 'transaction';
+      mode: 'purchase' | 'sale';
+      isReturnNote: boolean;
+      grandTotalPaise: Paise;
+      entryDate: string;
+      bankAccount: BankAccount;
+    }
+  | {
+      kind: 'payment';
+      direction: 'received' | 'paid';
+      amountPaise: Paise;
+      entryDate: string;
+      bankAccount: BankAccount | null;
+    }
+  | { kind: 'opening'; direction: 'owes_us' | 'we_owe'; amountPaise: Paise; entryDate: string }
   | { kind: 'reversal'; reversesEntry: PostedEntry };
 
 interface PostedEntry {
@@ -245,14 +255,14 @@ function replay(entries: LedgerEventRow[]): PostedEntry[];
 
 **Posting rules implemented here (§7):**
 
-| Event | Effect |
-| --- | --- |
-| Sale | debit `grandTotalPaise` |
-| Purchase | credit `grandTotalPaise` |
-| Money received | credit `amountPaise` |
-| Money paid | debit `amountPaise` |
-| Opening | debit or credit as entered |
-| Reversal | equal and opposite to the entry it reverses |
+| Event          | Effect                                      |
+| -------------- | ------------------------------------------- |
+| Sale           | debit `grandTotalPaise`                     |
+| Purchase       | credit `grandTotalPaise`                    |
+| Money received | credit `amountPaise`                        |
+| Money paid     | debit `amountPaise`                         |
+| Opening        | debit or credit as entered                  |
+| Reversal       | equal and opposite to the entry it reverses |
 
 A transaction flagged `isReturnNote` posts **opposite** to its mode — a sale
 return credits, a purchase return debits.
@@ -365,7 +375,7 @@ Exactly **two** sanctioned paise → rupee conversions exist in the whole system
 
 `entry_date` and `invoice_date` are **text `YYYY-MM-DD`** — an IST calendar date,
 not an instant (§12.4). Storing a calendar date as a timestamp invites
-off-by-one-day bugs at the timezone boundary. `created_at` and `at` *are*
+off-by-one-day bugs at the timezone boundary. `created_at` and `at` _are_
 instants and remain unix epoch integers.
 
 Date validation ("not later than today") must evaluate **today in IST**, not in
@@ -548,14 +558,14 @@ at both the pure and the D1-integration level** before the ledger is considered
 complete. CI runs typecheck, lint, the full suite, the build, and `pnpm audit` on
 every push.
 
-| Level | Target | Tool |
-| --- | --- | --- |
-| **Unit — money** | Every §8 formula, including the §8.4 worked example and negative round-off | Vitest |
-| **Unit — engine** | All six §6 scenarios A–F, exact figures, against the pure engine with no DB | Vitest |
-| **Integration — atomicity** | Forced mid-batch failure leaves zero partial rows (§15.3) | Vitest + workers pool + local D1 |
-| **Integration — replay** | `recomputeLedger` reproduces stored balances; void restores the prior position | Vitest + local D1 |
-| **Integration — API** | Zod rejection of floats, `NaN`, out-of-range; auth gate on every non-public route | Vitest |
-| **Accessibility** | AA contrast, no colour-only meaning, labels, focus rings | axe + manual |
+| Level                       | Target                                                                            | Tool                             |
+| --------------------------- | --------------------------------------------------------------------------------- | -------------------------------- |
+| **Unit — money**            | Every §8 formula, including the §8.4 worked example and negative round-off        | Vitest                           |
+| **Unit — engine**           | All six §6 scenarios A–F, exact figures, against the pure engine with no DB       | Vitest                           |
+| **Integration — atomicity** | Forced mid-batch failure leaves zero partial rows (§15.3)                         | Vitest + workers pool + local D1 |
+| **Integration — replay**    | `recomputeLedger` reproduces stored balances; void restores the prior position    | Vitest + local D1                |
+| **Integration — API**       | Zod rejection of floats, `NaN`, out-of-range; auth gate on every non-public route | Vitest                           |
+| **Accessibility**           | AA contrast, no colour-only meaning, labels, focus rings                          | axe + manual                     |
 
 No E2E framework is specified by §20; the Phase 2 gate is verified by hand on a
 360 px phone. Playwright would be an extension, not an omission to correct.
@@ -588,11 +598,11 @@ Engineering notes on the ones with teeth:
 
 **Resolved by the SRS.** Two layers, both card-free:
 
-| Layer | NFR | Mechanism |
-| --- | --- | --- |
-| Point-in-time recovery | **NFR-B1** | D1 **Time Travel** — 30-day PITR, no cost, no configuration |
-| Off-store dump | **NFR-B2** | `pnpm db:export`, wrapping `wrangler d1 export`, on a regular cadence; optionally automated by a GitHub Action to a build artifact |
-| Verified restore | **NFR-B3** | Documented **and actually performed** into a scratch database before handover |
+| Layer                  | NFR        | Mechanism                                                                                                                          |
+| ---------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Point-in-time recovery | **NFR-B1** | D1 **Time Travel** — 30-day PITR, no cost, no configuration                                                                        |
+| Off-store dump         | **NFR-B2** | `pnpm db:export`, wrapping `wrangler d1 export`, on a regular cadence; optionally automated by a GitHub Action to a build artifact |
+| Verified restore       | **NFR-B3** | Documented **and actually performed** into a scratch database before handover                                                      |
 
 **R2 is deliberately not used** — it requires a payment card on file, and §17.3
 states the arrangement must stay card-free. This matches the owner's 29 Aug
@@ -603,7 +613,7 @@ so recovery is not limited to Time Travel's 30-day window, and §11.5's
 "not re-importable" applies only to the human-facing Excel and CSV exports. No
 extension beyond the spec is needed.
 
-**NFR-B3 sets a real bar:** the restore must be *performed and verified*, not
+**NFR-B3 sets a real bar:** the restore must be _performed and verified_, not
 merely documented. Verification means the schema matches **and** a byte-exact
 paise round-trip of a known dealer's ledger is confirmed. Treat an unverified
 restore procedure as no backup at all.
@@ -669,14 +679,14 @@ A checklist for review. Any violation is a defect regardless of test status.
 
 With the SRS complete, almost everything is answered. What remains:
 
-| # | Item | Status |
-| --- | --- | --- |
-| 1 | Batch ID-allocation mechanism (§5.1) | **Genuinely open** — not addressed by the SRS. Decide in Phase 1. |
-| 2 | `id_sequences` table | **Owner-approved addition.** §15.3, §20 and §23 all require human-ID sequence generation, but §12/§13 still define no table for it. |
-| 3 | `source_id` convention for `opening` / `reversal` | Still unstated. §15.8 rule 3 requires every entry to trace via `source_type` + `source_id`; the derived table in [BACKEND_SCHEMA.md §4.5](BACKEND_SCHEMA.md) stands. |
-| 4 | `reverses_entry_id` has no declared FK | Recommend a self-referencing FK. |
-| 5 | The four §22 open items | Owner's call — see [PRD.md §10.2](PRD.md). All non-blocking. |
-| 6 | E2E framework | Not specified by §20. Adding Playwright is a scope decision. |
+| #   | Item                                              | Status                                                                                                                                                               |
+| --- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Batch ID-allocation mechanism (§5.1)              | **Genuinely open** — not addressed by the SRS. Decide in Phase 1.                                                                                                    |
+| 2   | `id_sequences` table                              | **Owner-approved addition.** §15.3, §20 and §23 all require human-ID sequence generation, but §12/§13 still define no table for it.                                  |
+| 3   | `source_id` convention for `opening` / `reversal` | Still unstated. §15.8 rule 3 requires every entry to trace via `source_type` + `source_id`; the derived table in [BACKEND_SCHEMA.md §4.5](BACKEND_SCHEMA.md) stands. |
+| 4   | `reverses_entry_id` has no declared FK            | Recommend a self-referencing FK.                                                                                                                                     |
+| 5   | The four §22 open items                           | Owner's call — see [PRD.md §10.2](PRD.md). All non-blocking.                                                                                                         |
+| 6   | E2E framework                                     | Not specified by §20. Adding Playwright is a scope decision.                                                                                                         |
 
 ### 16.1 Traps worth naming
 

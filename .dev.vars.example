@@ -1,0 +1,10 @@
+# Local development only. Copy to .dev.vars (gitignored) and fill in.
+#
+# AUTH_SECRET is the only Worker secret (SRS §16.1). It signs the session
+# cookie. Generate 32 random bytes, e.g.:
+#     node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+#
+# ⚠ If AUTH_SECRET is unset the auth gate is DISABLED. That is deliberate, and
+# it is a local convenience ONLY — the production build must refuse to start
+# without it.
+AUTH_SECRET=

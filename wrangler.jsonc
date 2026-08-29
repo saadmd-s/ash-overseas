@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ash-overseas-ledger",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-08-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // The SPA is served as static assets; unmatched paths fall back to index.html
+  // so client-side routing works. Every /api route is handled by the Worker.
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+  },
+
+  // SRS §16.4 and §19.2: SEPARATE development and production databases are
+  // mandatory. Development never holds real financial data unless protected
+  // identically. The default environment binds ledger-dev; env.production binds
+  // ledger-prod.
+  //
+  // ⚠ database_id values are placeholders. Run, in the maintainer's Cloudflare
+  // account (SRS §19.2):
+  //     wrangler d1 create ledger-dev
+  //     wrangler d1 create ledger-prod
+  // and paste the returned IDs here. `--local` development works without them.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ledger-dev",
+      "database_id": "REPLACE_WITH_LEDGER_DEV_ID",
+      "migrations_dir": "drizzle/migrations",
+    },
+  ],
+
+  "env": {
+    "production": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ledger-prod",
+          "database_id": "REPLACE_WITH_LEDGER_PROD_ID",
+          "migrations_dir": "drizzle/migrations",
+        },
+      ],
+    },
+  },
+
+  // AUTH_SECRET is the only Worker secret (SRS §16.1). It is NOT declared here —
+  // set it with `wrangler secret put AUTH_SECRET --env production`, and locally
+  // in .dev.vars (gitignored). Unset ⇒ the auth gate is DISABLED, which is a
+  // local-development convenience only; the production build must refuse to
+  // start without it.
+}

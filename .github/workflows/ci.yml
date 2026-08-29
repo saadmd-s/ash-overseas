@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      # The money module is the foundation everything else rests on. Green from
+      # Phase 0 onward — SRS §8.4's worked example included.
+      - name: Test — money math
+        run: pnpm exec vitest run src/money
+
+      - name: Build
+        run: pnpm build
+
+      - name: Audit
+        run: pnpm audit --audit-level high
+
+      # ─────────────────────────────────────────────────────────────────────
+      # The SRS §6 acceptance scenarios.
+      #
+      # EXPECTED RED until Phase 1 closes. The Phase 0 gate (§23) is that this
+      # suite "runs and fails for the right reason" — the engine is an
+      # unimplemented contract, and the expected figures are encoded ahead of it
+      # so the engine cannot be written to match its own output.
+      #
+      # ⚠ REMOVE continue-on-error THE MOMENT PHASE 1 IS DONE. From then on it
+      # is the gating suite (§20) and a failure must block the merge.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Test — §6 acceptance scenarios (expected red until Phase 1)
+        continue-on-error: true
+        run: pnpm exec vitest run src/ledger

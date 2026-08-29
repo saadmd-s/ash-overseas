@@ -20,16 +20,16 @@
 
 Seven tables in the SRS, plus one confirmed addition (§7):
 
-| Table | Holds |
-| --- | --- |
-| `dealers` | Identity and contact details; a type used only for list filtering |
-| `transactions` | One goods deal (purchase or sale): header, GST rate, totals, bank tag |
-| `transaction_lines` | Per-item quantity, unit, rate, amount |
-| `payments` | Money received from and paid to dealers |
-| `ledger_entries` | The append-only posted ledger with running balances — the digital khata |
-| `audit_log` | Every create, void, and edit with before/after JSON |
-| `app_credentials` | The single user's username and password hash |
-| `id_sequences` **(addition)** | Human-ID counters, allocated inside the atomic batch |
+| Table                         | Holds                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `dealers`                     | Identity and contact details; a type used only for list filtering       |
+| `transactions`                | One goods deal (purchase or sale): header, GST rate, totals, bank tag   |
+| `transaction_lines`           | Per-item quantity, unit, rate, amount                                   |
+| `payments`                    | Money received from and paid to dealers                                 |
+| `ledger_entries`              | The append-only posted ledger with running balances — the digital khata |
+| `audit_log`                   | Every create, void, and edit with before/after JSON                     |
+| `app_credentials`             | The single user's username and password hash                            |
+| `id_sequences` **(addition)** | Human-ID counters, allocated inside the atomic batch                    |
 
 ### 1.1 Relationships
 
@@ -181,7 +181,7 @@ calendar date the owner selected (§12.4). Three reasons:
    directly in SQL with no conversion.
 3. It round-trips through JSON unchanged.
 
-`created_at` and `at` *are* instants and stay unix epoch integers.
+`created_at` and `at` _are_ instants and stay unix epoch integers.
 
 **Consequence for validation:** "not later than today" must be evaluated against
 **today in IST**, not the Worker's UTC clock. At 23:00 UTC it is already tomorrow
@@ -210,12 +210,12 @@ values here. It is the only monetary column that is routinely negative apart fro
 
 ### 4.5 `source_id` semantics per `source_type`
 
-| `source_type` | `source_id` points at | `reverses_entry_id` |
-| --- | --- | --- |
-| `transaction` | `transactions.id` | NULL |
-| `payment` | `payments.id` | NULL |
-| `opening` | NULL — the dealer is already on the row | NULL |
-| `reversal` | the original source record's id | **the `ledger_entries.id` being reversed** |
+| `source_type` | `source_id` points at                   | `reverses_entry_id`                        |
+| ------------- | --------------------------------------- | ------------------------------------------ |
+| `transaction` | `transactions.id`                       | NULL                                       |
+| `payment`     | `payments.id`                           | NULL                                       |
+| `opening`     | NULL — the dealer is already on the row | NULL                                       |
+| `reversal`    | the original source record's id         | **the `ledger_entries.id` being reversed** |
 
 > **Still unstated in the complete SRS.** §12.3 declares the columns and §15.8
 > rule 3 requires every entry to trace to a source, but the `opening` and
@@ -228,21 +228,21 @@ values here. It is the only monetary column that is routinely negative apart fro
 The schema cannot express these. They are enforced by the posting layer and
 verified by tests.
 
-| # | Invariant | Enforced by |
-| --- | --- | --- |
-| **I1** | Exactly one of `debit_paise` / `credit_paise` is non-zero on any ledger entry | Posting layer + test |
-| **I2** | `running_balance_paise` = previous entry's balance + `debit_paise` − `credit_paise`, in `(entry_date, id)` order | Posting layer; verified by replay |
-| **I3** | Replaying all non-voided entries from zero reproduces every stored running balance exactly | `recomputeLedger` integrity check |
-| **I4** | Every `ledger_entries` row has a resolvable source | FK + posting layer |
-| **I5** | A voided source has exactly one reversal entry pointing at its original ledger entry | Void handler + test |
-| **I6** | No row is ever hard-deleted from `transactions`, `payments`, or `ledger_entries` | Code review; no DELETE statements exist |
-| **I7** | `bank_account` never influences `debit_paise`, `credit_paise`, or `running_balance_paise` | Scenario F test |
-| **I8** | `grand_total_paise` is always a whole number of rupees (a multiple of 100) | `roundToRupee`; assert in tests |
-| **I9** | `base_total_paise` = Σ of the transaction's `amount_paise` line values | Posting layer + test |
-| **I10** | `payments.amount_paise` > 0 strictly | Zod + test |
-| **I11** | `discount_paise` ≤ `base_total_paise` | Zod (§10.9) |
-| **I12** | `app_credentials` holds exactly one row | Migration seed + code |
-| **I13** | All money columns hold integers; no fractional value is ever written | `money/` module; type-level |
+| #       | Invariant                                                                                                        | Enforced by                             |
+| ------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| **I1**  | Exactly one of `debit_paise` / `credit_paise` is non-zero on any ledger entry                                    | Posting layer + test                    |
+| **I2**  | `running_balance_paise` = previous entry's balance + `debit_paise` − `credit_paise`, in `(entry_date, id)` order | Posting layer; verified by replay       |
+| **I3**  | Replaying all non-voided entries from zero reproduces every stored running balance exactly                       | `recomputeLedger` integrity check       |
+| **I4**  | Every `ledger_entries` row has a resolvable source                                                               | FK + posting layer                      |
+| **I5**  | A voided source has exactly one reversal entry pointing at its original ledger entry                             | Void handler + test                     |
+| **I6**  | No row is ever hard-deleted from `transactions`, `payments`, or `ledger_entries`                                 | Code review; no DELETE statements exist |
+| **I7**  | `bank_account` never influences `debit_paise`, `credit_paise`, or `running_balance_paise`                        | Scenario F test                         |
+| **I8**  | `grand_total_paise` is always a whole number of rupees (a multiple of 100)                                       | `roundToRupee`; assert in tests         |
+| **I9**  | `base_total_paise` = Σ of the transaction's `amount_paise` line values                                           | Posting layer + test                    |
+| **I10** | `payments.amount_paise` > 0 strictly                                                                             | Zod + test                              |
+| **I11** | `discount_paise` ≤ `base_total_paise`                                                                            | Zod (§10.9)                             |
+| **I12** | `app_credentials` holds exactly one row                                                                          | Migration seed + code                   |
+| **I13** | All money columns hold integers; no fractional value is ever written                                             | `money/` module; type-level             |
 
 ### 5.1 Optional CHECK constraints
 
@@ -457,12 +457,12 @@ an unauthenticated write path into the only thing protecting the data.
 
 ## 10. Schema Gaps and Open Items
 
-| # | Gap | Impact | Status |
-| --- | --- | --- | --- |
-| 1 | No table for the human-ID sequence required by §15.3 / FR-T9 | Blocks FR-T9 | **RESOLVED** — `id_sequences` confirmed by the owner, 29 Aug 2026 (§7) |
-| 2 | No backup or retention posture stated | D1 holds the only copy of the ledger | **RESOLVED** — Time Travel + owner-triggered full export, no R2. See [TRD.md §13.1](TRD.md), which flags the restore gap |
-| 3 | No `sessions` table | Session storage undefined | **RESOLVED in shape** — 30-day stateless signed cookie, no server-side session rows needed (see [TRD.md §9.1](TRD.md)) |
-| 4 | `reverses_entry_id` has no declared FK to `ledger_entries.id` | Orphan reversal possible | Add self-referencing FK, or enforce in the posting layer |
-| 5 | `source_id` conventions for `opening` and `reversal` unstated | Ambiguous joins | **Still unstated in the full SRS.** §15.8 rule 3 requires every entry to trace via `source_type` + `source_id`; the derived table in §4.5 stands |
-| 6 | No unique constraint on `transaction_lines (transaction_id, line_no)` | Duplicate line numbers possible | Recommend adding |
-| 7 | Replay's row-exclusion rule | Intermediate rows may differ | **RESOLVED by reading** — §15.8 rule 5 implies reversal rows are replayed, not re-derived (§8.4) |
+| #   | Gap                                                                   | Impact                               | Status                                                                                                                                           |
+| --- | --------------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | No table for the human-ID sequence required by §15.3 / FR-T9          | Blocks FR-T9                         | **RESOLVED** — `id_sequences` confirmed by the owner, 29 Aug 2026 (§7)                                                                           |
+| 2   | No backup or retention posture stated                                 | D1 holds the only copy of the ledger | **RESOLVED** — Time Travel + owner-triggered full export, no R2. See [TRD.md §13.1](TRD.md), which flags the restore gap                         |
+| 3   | No `sessions` table                                                   | Session storage undefined            | **RESOLVED in shape** — 30-day stateless signed cookie, no server-side session rows needed (see [TRD.md §9.1](TRD.md))                           |
+| 4   | `reverses_entry_id` has no declared FK to `ledger_entries.id`         | Orphan reversal possible             | Add self-referencing FK, or enforce in the posting layer                                                                                         |
+| 5   | `source_id` conventions for `opening` and `reversal` unstated         | Ambiguous joins                      | **Still unstated in the full SRS.** §15.8 rule 3 requires every entry to trace via `source_type` + `source_id`; the derived table in §4.5 stands |
+| 6   | No unique constraint on `transaction_lines (transaction_id, line_no)` | Duplicate line numbers possible      | Recommend adding                                                                                                                                 |
+| 7   | Replay's row-exclusion rule                                           | Intermediate rows may differ         | **RESOLVED by reading** — §15.8 rule 5 implies reversal rows are replayed, not re-derived (§8.4)                                                 |

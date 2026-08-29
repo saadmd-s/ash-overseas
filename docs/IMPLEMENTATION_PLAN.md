@@ -21,7 +21,7 @@
 decisions, then persistence, then the real interface, then hardening.
 
 The reason is testability. `money/` and `ledger/` have no dependencies, so the
-six §6 scenarios can be *encoded* in Phase 0 and *passed* in Phase 1 before a
+six §6 scenarios can be _encoded_ in Phase 0 and _passed_ in Phase 1 before a
 screen exists. If the numbers are wrong, everything downstream is wrong, and no
 amount of interface work surfaces it.
 
@@ -233,17 +233,17 @@ login-setup script; the owner walked through the application once.
 
 ## Risk Register
 
-| Risk | Phase | Mitigation |
-| --- | --- | --- |
-| A float reaches a money path | 0 | Lint rule + `money/` isolation + server-boundary rejection |
-| Engine written to match its own output | 0 | Scenarios encoded before the engine exists; gate requires failing for the right reason |
-| D1 batch cannot resolve generated ids | 1 | Pre-allocate primary keys; never split the batch |
-| Back-dated entry leaves stale balances | 1 | §15.6 replay trigger + integrity check |
-| Bank tag misread as a second ledger | 2 | Scenario F test + the mandatory "N of M" notice |
-| PBKDF2 iterations pass tests, fail production | 3 | Cap at 100,000; assert the constant in a test |
-| `AUTH_SECRET` unset in production | 3 | Build refuses to start; verify on the first prod deploy |
-| Service worker caches a balance | 2 | Network-only `/api/*`; explicit test |
-| Backup exists but was never restored | 3 | NFR-B3 makes a verified restore the gate, not a document |
+| Risk                                          | Phase | Mitigation                                                                             |
+| --------------------------------------------- | ----- | -------------------------------------------------------------------------------------- |
+| A float reaches a money path                  | 0     | Lint rule + `money/` isolation + server-boundary rejection                             |
+| Engine written to match its own output        | 0     | Scenarios encoded before the engine exists; gate requires failing for the right reason |
+| D1 batch cannot resolve generated ids         | 1     | Pre-allocate primary keys; never split the batch                                       |
+| Back-dated entry leaves stale balances        | 1     | §15.6 replay trigger + integrity check                                                 |
+| Bank tag misread as a second ledger           | 2     | Scenario F test + the mandatory "N of M" notice                                        |
+| PBKDF2 iterations pass tests, fail production | 3     | Cap at 100,000; assert the constant in a test                                          |
+| `AUTH_SECRET` unset in production             | 3     | Build refuses to start; verify on the first prod deploy                                |
+| Service worker caches a balance               | 2     | Network-only `/api/*`; explicit test                                                   |
+| Backup exists but was never restored          | 3     | NFR-B3 makes a verified restore the gate, not a document                               |
 
 ---
 
