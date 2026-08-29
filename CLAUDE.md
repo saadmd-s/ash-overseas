@@ -12,8 +12,23 @@ sections 16–23 and both appendices have not been transcribed yet.
 
 ## Status
 
-Phase 1 not started. Repo contains the specification only — no application
-code, no `package.json`, no toolchain.
+Phase 1 not started. Repo contains the specification and documentation only —
+no application code, no `package.json`, no toolchain.
+
+## Documentation set
+
+All derived from the SRS. Where any of them disagrees with SRS.md, the SRS wins.
+Inferences awaiting the truncated sections are tagged **[PENDING §n]** — treat a
+gap as an unknown requirement, never as an absent one.
+
+| Document | Read it when |
+| --- | --- |
+| [docs/PRD.md](docs/PRD.md) | You need the why, the users, or the success criteria |
+| [docs/TRD.md](docs/TRD.md) | Architecture, module contracts, the non-negotiables list |
+| [docs/APP_FLOW.md](docs/APP_FLOW.md) | Building a screen or a route; states and validation gates |
+| [docs/UIUX.md](docs/UIUX.md) | Building UI; components, copy rules, accessibility |
+| [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md) | Touching the database; DDL, invariants, queries |
+| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Deciding what to build next |
 
 ---
 
