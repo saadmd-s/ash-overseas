@@ -316,8 +316,24 @@ is an explicit integration test (§15.3), not an assumption about D1's behaviour
 Steps 3 and 4 need `transactions.id`, which only exists after step 2. D1's batch
 does not let a later statement read an earlier one's generated key.
 
-**Still open — the complete SRS does not address it.** Resolve in Phase 1 (§23).
-Two approaches:
+**RESOLVED in Phase 1.** Neither approach below was needed.
+
+The batch's first statement allocates the counter. The header's `human_id` is
+computed _in SQL_ from it, and every later statement resolves the header through
+that UNIQUE value:
+
+```sql
+-- in each dependent statement, instead of a generated key
+(SELECT id FROM transactions WHERE human_id =
+  (?scope || '-' || printf('%04d',
+     (SELECT next_value - 1 FROM id_sequences WHERE scope = ?scope))))
+```
+
+The whole write stays in one batch. `src/posting/atomicity.test.ts` asserts that
+a failed batch leaves the sequence at zero — the check that would catch the
+allocation being lifted out of the batch.
+
+The two approaches originally considered, for the record:
 
 - Pre-allocate the primary key (application-generated id rather than
   `AUTOINCREMENT`), so every statement in the batch knows every id up front.

@@ -5,7 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["vite/client", "@cloudflare/workers-types"],
+    "types": ["vite/client", "@cloudflare/workers-types", "@cloudflare/vitest-pool-workers/types"],
 
     "strict": true,
     "noUncheckedIndexedAccess": false,
@@ -23,5 +23,12 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts", "drizzle.config.ts", "eslint.config.js"]
+  "include": [
+    "src",
+    "worker-configuration.d.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "drizzle.config.ts",
+    "eslint.config.js"
+  ]
 }

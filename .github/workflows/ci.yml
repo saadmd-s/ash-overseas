@@ -26,28 +26,15 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # The money module is the foundation everything else rests on. Green from
-      # Phase 0 onward — SRS §8.4's worked example included.
-      - name: Test — money math
-        run: pnpm exec vitest run src/money
+      # SRS §20's gating rule: all six §6 acceptance scenarios must pass at
+      # BOTH the pure and the D1-integration level. Phase 0 ran the scenarios
+      # with continue-on-error because the engine was deliberately unimplemented;
+      # that flag came off the moment Phase 1 landed, and must never go back.
+      - name: Test
+        run: pnpm test
 
       - name: Build
         run: pnpm build
 
       - name: Audit
         run: pnpm audit --audit-level high
-
-      # ─────────────────────────────────────────────────────────────────────
-      # The SRS §6 acceptance scenarios.
-      #
-      # EXPECTED RED until Phase 1 closes. The Phase 0 gate (§23) is that this
-      # suite "runs and fails for the right reason" — the engine is an
-      # unimplemented contract, and the expected figures are encoded ahead of it
-      # so the engine cannot be written to match its own output.
-      #
-      # ⚠ REMOVE continue-on-error THE MOMENT PHASE 1 IS DONE. From then on it
-      # is the gating suite (§20) and a failure must block the merge.
-      # ─────────────────────────────────────────────────────────────────────
-      - name: Test — §6 acceptance scenarios (expected red until Phase 1)
-        continue-on-error: true
-        run: pnpm exec vitest run src/ledger

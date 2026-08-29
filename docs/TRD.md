@@ -304,10 +304,19 @@ rows. This is an explicit integration test, not an assumption about D1.
 Steps 2–4 need IDs that only exist after their inserts. D1's batch does not let a
 later statement read an earlier statement's generated key directly, so the
 posting layer must either use `RETURNING` and a follow-up batch, or pre-allocate
-identifiers. **Still open** — the SRS does not address it. Resolve in Phase 1
-(§23) and record the chosen mechanism here; the correctness requirement
-(all-or-nothing) is fixed regardless. Pre-allocating primary keys preserves it;
-splitting into two batches does not.
+**RESOLVED in Phase 1 — derive the human ID in SQL, and reference the header by
+it.** Neither of the options above was needed.
+
+The sequence is allocated by the batch's first statement (an upsert on
+`id_sequences`). The header's `human_id` is then computed _in SQL_ from that
+counter, and because `human_id` is UNIQUE, every later statement finds its
+header with a scalar subquery — `(SELECT id FROM transactions WHERE human_id =
+…)` — without ever needing the generated integer key.
+
+The whole write stays in one batch, exactly as §15.3 demands. `src/posting/ids.ts`
+carries the expression; the atomicity tests prove a failed batch advances
+nothing, **including the sequence** — which is the assertion that would fail had
+the allocation been lifted out of the batch as a shortcut.
 
 ## 6. Running Balance Strategy
 

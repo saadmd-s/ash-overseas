@@ -11,8 +11,14 @@ all 23 sections plus Appendix A and Appendix B.
 
 ## Status
 
-**Phase 0 (Foundations, SRS §23) not started.** Repo contains the specification
-and documentation only — no application code, no `package.json`, no toolchain.
+**Phase 0 and Phase 1 complete (SRS §23).** The money module, pure ledger
+engine, posting layer, API routes and a minimal read-only dealer screen are in
+place. All six §6 scenarios pass at **both** the pure and the D1-integration
+level; the §15.3 atomicity test passes. **Phase 2 (the real application) is
+next.**
+
+⚠ **There is no auth gate yet** — it is Phase 3 (§16.1, §23). The Worker now has
+write paths, so the gate must be in place before any real data is entered.
 
 ## Documentation set
 

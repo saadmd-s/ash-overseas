@@ -3,3 +3,4 @@ dist
 .wrangler
 drizzle/migrations
 pnpm-lock.yaml
+worker-configuration.d.ts

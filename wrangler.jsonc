@@ -2,7 +2,13 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ash-overseas-ledger",
   "main": "src/worker/index.ts",
-  "compatibility_date": "2026-08-29",
+  // Pinned to a date supported by BOTH runtimes in this repo: the workerd that
+  // ships with wrangler, and the older one bundled by
+  // @cloudflare/vitest-pool-workers. A date newer than the test runtime's
+  // ceiling makes the integration suite fail to start with
+  // ERR_RUNTIME_FAILURE, which reads like a broken binary rather than a config
+  // mismatch. Raise this only when both can support the newer date.
+  "compatibility_date": "2026-08-22",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 
