@@ -1,0 +1,170 @@
+# ASH Overseas — Trading Ledger
+
+Private, single-user web app replacing the owner's paper ledger for a metal
+castings / scrap trading business. Records goods transactions and money
+movements with dealers, maintains one running balance per dealer, exports to
+Excel.
+
+**[SRS.md](SRS.md) is authoritative on every business rule.** This file is the
+working summary — when the two disagree, the SRS wins. Note that SRS.md is
+currently **incomplete below §15.4** (see the marker at the end of that file);
+sections 16–23 and both appendices have not been transcribed yet.
+
+## Status
+
+Phase 1 not started. Repo contains the specification only — no application
+code, no `package.json`, no toolchain.
+
+---
+
+## The rules that matter most
+
+### 1. One balance per dealer
+
+Exactly one signed running balance per dealer, from the business's point of view:
+
+- **positive** → the dealer owes the business
+- **negative** → the business owes the dealer
+- **zero** → settled
+
+`running_balance = Σ(debit) − Σ(credit)`. It crosses zero with no special
+handling. There are no advance buckets, no FIFO matching, no purchase/sale
+sub-balances.
+
+### 2. Purchase and Sale are UI labels
+
+They filter dealer lists and pre-set the mode on a new entry. They **never**
+split a dealer's money into two pots. A dealer can be both supplier and buyer
+and still has one balance.
+
+### 3. The bank account tag (OD / Current) is a tag
+
+It records which of the *business's own* accounts the money ran through, for
+filtering and export subtotals. It never splits a balance, never changes a
+posting rule, never affects the headline. Filtering the history by it must not
+change the headline or the running-balance column — show a "showing N of M
+entries" notice instead. (SRS §6.6)
+
+### 4. All money is integer paise
+
+No floating-point money anywhere — not in the DB, not in computation, not in
+API bodies, not in form state. `parseFloat` and `toFixed` are forbidden for
+money. Exactly two sanctioned paise → rupee conversions exist:
+
+- `formatPaise()` at the render boundary
+- the Excel export boundary (`paise / 100` into a numeric cell), SRS §11.4
+
+Integer paise fits exactly in a JS `number` below 2^53 (≈ ₹90 trillion).
+**BigInt is not needed.** The rule is "never let a fractional money value
+exist", not "avoid `number`".
+
+One money-math module owns every arithmetic operation on paise. No ad-hoc `*`,
+`/`, or `Math.round` on money anywhere else.
+
+### 5. Nothing is ever deleted
+
+Corrections are **voids**: flag the source `is_voided`, post an equal and
+opposite reversing entry linked to the original, replay, write an audit row.
+Non-financial fields (notes, reference tag, item name spelling) may be edited
+in place and are audited. Any change to date, amount, quantity, rate, GST rate,
+discount, freight, dealer, or mode requires void + re-entry.
+
+### 6. Every multi-row write is one `db.batch([...])`
+
+D1 has no interactive `BEGIN…COMMIT` over the Workers binding. The transaction
+header, its lines, the ledger entry, the human-ID sequence, and the audit row
+commit together or not at all. A forced mid-batch failure leaving zero partial
+rows is an explicit integration test. (SRS §15.3)
+
+---
+
+## Posting rules (SRS §7)
+
+| Event | Effect | Amount |
+| --- | --- | --- |
+| Sale (goods to dealer) | debit | rounded grand total |
+| Purchase (goods from dealer) | credit | rounded grand total |
+| Money received from dealer | credit | amount |
+| Money paid to dealer | debit | amount |
+| Opening position | as entered | opening amount |
+| Void | reversing entry | the original posted amount |
+
+A return / credit-debit note posts **opposite** to its mode: a sale return
+credits, a purchase return debits.
+
+## Money math (SRS §8)
+
+```
+line_amount_paise = roundPaise(quantity × rate_paise)      // half-up to paise
+
+base_total_paise  = Σ line_amount_paise
+taxable_paise     = base_total_paise − discount_paise + freight_paise
+gst_amount_paise  = roundPaise(taxable_paise × gst_rate / 100)
+raw_total_paise   = taxable_paise + gst_amount_paise
+grand_total_paise = roundToRupee(raw_total_paise)          // half-up to ₹1
+round_off_paise   = grand_total_paise − raw_total_paise    // may be negative
+```
+
+`grand_total_paise` is what posts to the ledger. GST rate is a per-transaction
+field defaulting to 18, range 0–100, stored per row so history never shifts.
+No GST master, no HSN master, no CGST/SGST/IGST split in this edition.
+
+## Acceptance tests — SRS §6
+
+Six scenarios, A–F. **Implement them as automated tests before the ledger is
+considered complete**, and reproduce every figure exactly:
+
+| | Covers | Key figure |
+| --- | --- | --- |
+| A | goods and money both ways | ends −3,23,000 |
+| B | GST round-off | 2,69,323.20 → posts 2,69,323, `round_off_paise = −20` |
+| C | advance against two shipments | ends −3,19,592 |
+| D | balance crossing zero | −3,19,592 → +34,408 |
+| E | void and replay | returns to −5,39,544 |
+| F | bank tag does not split | one headline of +1,77,000 |
+
+## Architecture
+
+- **Ledger engine** — a pure module, no DB imports. Given a prior balance and an
+  event it returns the entries to post. The §6 scenarios exercise it directly.
+- **Posting layer** — thin wrapper that does the DB writes via `db.batch`.
+- **Money-math module** — sole owner of paise arithmetic.
+- Running balance is computed **at write time** and served from the stored
+  value on read, never recomputed on read. Single-user, so this is safe.
+- Replay/display order key is always `(entry_date, id)`. Never insertion order,
+  never a float.
+- `recomputeLedger(dealerId)` replays all non-voided entries from zero (or the
+  opening entry) after every void and after any back-dated insert.
+
+## Stack
+
+Cloudflare Workers + D1 (SQLite) + Drizzle ORM. Zod at every route boundary,
+server-side validation authoritative. Single-user username/password gate
+(`pbkdf2$<iters>$<salt>$<hash>`), session cookie, no sign-up, no public route.
+Mobile-first PWA — cache the app shell only, **never** financial data, because a
+stale balance is a dangerous balance. Excel export generated client-side with
+SheetJS from paise returned by the API.
+
+Migrations: `drizzle-kit generate` authors the SQL, `wrangler d1 migrations
+apply` applies it. Never hand-edit an applied migration; add a new one.
+
+> The exact framework choice (Next.js vs Vite + React + Hono) sits in SRS §18,
+> which has not been transcribed yet. Confirm before scaffolding.
+
+## Dates
+
+`entry_date` / `invoice_date` are **text `YYYY-MM-DD`** — an IST calendar date,
+not an instant. This sorts lexicographically so `(entry_date, id)` works in SQL
+directly, and avoids off-by-one-day timezone bugs. `created_at` / `at` are real
+instants and stay unix epoch integers.
+
+## Interface language
+
+The user never sees "debit", "credit", or a bare `+`/`−`. Balances always read
+"Dealer owes you ₹X" / "You owe dealer ₹X" / "Settled", with an icon and text —
+never colour alone. Amounts format through a single `formatPaise()` using
+`Intl.NumberFormat('en-IN', …)` **from paise**. Dates display `DD MMM YYYY`.
+
+The one exception is the Excel export: column S carries a numerically signed
+balance so Excel can sum and chart it, with the plain-language direction in the
+adjacent column T.
