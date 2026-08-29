@@ -5,7 +5,7 @@
 **Prepared by:** Suhaib
 **Version:** 1.0 — Simplified scope
 **Date:** 29 August 2026
-**Status:** Approved scope — ready for development
+**Status:** Approved scope — ready for development (complete transcription)
 **Target accounts:** maintainer's GitHub organisation/account (private repo) and maintainer's Cloudflare account
 
 > This document is **self-contained and authoritative** for the simplified application. It supersedes the earlier dual-valuation specification for this build. Appendix A lists exactly what changed and why, for anyone who has seen the earlier document.
@@ -916,27 +916,386 @@ D1 does **not** offer interactive `BEGIN…COMMIT` transactions over the Workers
 
 The replay and display order key is **`(entry_date, id)`** — a stable tiebreak for entries sharing a date. Insertion order alone is never relied upon, and money is never sorted by a float.
 
+### 15.5 Replay
+
+```
+recomputeLedger(dealerId)
+```
+
+A pure function that replays all non-voided entries for a dealer in `(entry_date, id)` order and recomputes running balances from zero (or from the dealer's opening entry). It is called after **every** void, and after any back-dated insert that lands before existing entries. The Section 6 scenarios are its expected outputs.
+
+### 15.6 Back-dated Entries
+
+An entry saved with a date earlier than existing entries is legitimate and must be supported. On such an insert the application posts the row and then runs `recomputeLedger(dealerId)`, so every subsequent running balance is rewritten correctly. The stored balance is never left stale.
+
+### 15.7 Corrections
+
+No financial row is ever updated in place in a way that changes its monetary effect, and none is ever hard-deleted. A void:
+
+1. Posts a reversing `ledger_entries` row (`source_type = 'reversal'`, `reverses_entry_id` set), equal and opposite to the original.
+2. Flags the source record `is_voided = true`; the source's own rows are retained in full.
+3. Writes an `audit_log` row with before/after state.
+4. Runs `recomputeLedger(dealerId)`.
+
+All four steps occur in one batch (the replay writes follow in the same call chain and must themselves be batched).
+
+### 15.8 Integrity Rules
+
+1. The ledger is **append-only**.
+2. Every monetary column is an integer; no floating-point money exists anywhere.
+3. Every ledger entry traces to a source record via `source_type` and `source_id`.
+4. Opening positions are `opening` ledger entries, never mutable fields on the dealer row.
+5. Voided sources retain their rows; their effect is neutralised only by reversing entries.
+6. Ledger integrity is treated as a **security property** — it is what prevents silent tampering.
+
 ---
 
-> ## ⚠ DOCUMENT INCOMPLETE — TRANSCRIPTION CUT HERE
->
-> The source document was truncated in transit at the 50,000-character limit,
-> mid-way through **§15.5 Replay**. Everything above this line is verbatim and
-> complete. Everything below is **missing** and must be pasted in before this
-> file can be treated as authoritative:
->
-> - §15.5 Replay (`recomputeLedger`) — partial sentence: *"…called after **every** void, and after any back-dated insert that lands bef…"*
-> - §15.6 onward (if any) — remainder of Ledger Computation & Integrity
-> - §16 Security Requirements
-> - §17 Non-Functional Requirements
-> - §18 Technology Stack & Deployment
-> - §19 Provisioning in the Maintainer's Accounts (incl. §19.5 credential recovery, referenced by FR-U3)
-> - §20 Testing Strategy
-> - §21 Scope Boundaries
-> - §22 Assumptions & Open Items
-> - §23 Delivery Plan
-> - Appendix A — Differences from the dual-valuation specification
-> - Appendix B — Money-math reference implementation (referenced by §8.5 and §15.1)
->
-> Until this is filled in, do not treat the absence of a rule below §15.4 as
-> the absence of a requirement.
+## 16. Security Requirements
+
+The application holds the complete financial position of a business. A leak is materially damaging. Defence in depth across four layers.
+
+### 16.1 Layer 1 — The Login Gate
+
+- A **single-user username and password** gates the entire application: every page and every `/api` route. There is no public route and no self-service sign-up.
+- The username and a **PBKDF2-SHA256** password hash (format `pbkdf2$<iters>$<salt>$<hash>`) live in the D1 `app_credentials` table — **not** in environment secrets — so the owner can change them from inside the application. A Worker cannot rewrite its own secrets; it can write to its database.
+- **PBKDF2 iterations are capped at 100,000.** The Workers runtime throws `NotSupportedError` above that. Local test runners do not, so a higher value passes tests and then fails in production.
+- A correct login mints an **HMAC-signed session cookie** (signed with `AUTH_SECRET`) with a 30-day expiry and the attributes `HttpOnly; Secure; SameSite=Strict; Path=/`.
+- The credential-change routes sit **behind** the gate **and** re-require the current password.
+- A wrong login gets a deliberate ~½ second delay before its 401, so the endpoint cannot be hammered cheaply.
+- `AUTH_SECRET` is the only Worker secret and is what turns the gate on. Unset ⇒ the gate is **disabled** — a local-development convenience only. Production always sets it. The build must refuse to start in production mode without it.
+- All cryptography uses **Web Crypto**, so identical code runs in workerd and in the Node test runner.
+
+### 16.2 Layer 2 — Transport & Headers
+
+Set on every response:
+
+```
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+```
+
+No inline scripts (nonces or hashes if ever unavoidable). No CDN fonts or external assets — fonts are self-hosted, which the CSP requires anyway.
+
+### 16.3 Layer 3 — Application
+
+- **Validate every input with Zod at the server boundary.** Never trust the client. Money fields accept integer paise only; floats, `NaN`, disallowed negatives, and out-of-range values are rejected. Every Section 10.9 rule is re-run server-side.
+- Every ledger-mutating endpoint is behind the session check. There is no unauthenticated write path.
+- **SQL injection:** parameterised Drizzle queries only; SQL is never string-concatenated.
+- **CSRF:** verify `Origin` / `Sec-Fetch-Site` on state-changing routes; the `SameSite=Strict` cookie is a second line.
+- **No money or dealer PII in logs, error traces, or analytics.** A logging helper redacts amount, name, and GSTIN fields. No third-party analytics or error-reporting SaaS receives request bodies.
+- The audit log is append-only and never stores secrets.
+
+### 16.4 Layer 4 — Data & Supply Chain
+
+- Secrets live only in `wrangler secret` and `.dev.vars` (gitignored). Nothing sensitive in the repository, ever.
+- D1 is encrypted at rest by the platform.
+- **Separate development and production databases** are mandatory. Development never holds real financial data unless protected identically.
+- Commit the lockfile; enable Dependabot; run `pnpm audit` in CI; pin wrangler and Drizzle versions; minimise dependencies — each one is attack surface.
+
+### 16.5 Threat Model
+
+**Defended:** unauthorised read of financial data (password gate, signed session cookie, no public route); tampering with historical figures (append-only, reversing entries, audit, replay); accidental data loss (Time Travel, SQL-dump export, tested restore); secret leakage (environment-only secrets, none in logs); dependency compromise (lockfile, audit, minimal dependencies).
+
+**Out of model:** nation-state adversaries, and theft of the owner's already-unlocked phone (mitigated only by the 30-day session expiry and the sign-out action).
+
+---
+
+## 17. Non-Functional Requirements
+
+### 17.1 Data Integrity
+
+- **NFR-I1** All money is stored as integer paise; rupee formatting occurs only at display and export time.
+- **NFR-I2** The ledger is append-only; corrections are reversing entries.
+- **NFR-I3** Writes producing multiple rows occur atomically in a single batch.
+
+### 17.2 Security
+
+- **NFR-S1** Access requires authentication; no public access, no self-service sign-up.
+- **NFR-S2** The application is an internal record. It stores official references (invoice number) when entered but generates no legal or official document.
+- **NFR-S3** Monetary values and dealer details are never written to logs, error traces, or analytics.
+- **NFR-S4** Data is transmitted over HTTPS with HSTS and stored encrypted at rest.
+
+### 17.3 Backup & Recovery
+
+- **NFR-B1** Point-in-time recovery is enabled — D1 **Time Travel** gives 30-day PITR at no cost and requires no configuration.
+- **NFR-B2** A full SQL dump export (`pnpm db:export`, wrapping `wrangler d1 export`) is retained off the primary store on a regular cadence, optionally automated by a GitHub Action to a build artifact. **R2 is deliberately not used** — it requires a payment card on file, and this arrangement must stay card-free.
+- **NFR-B3** A restore procedure is documented **and actually performed and verified** into a scratch database before handover. Verification means: the schema matches, and a byte-exact paise round-trip of a known dealer's ledger is confirmed.
+
+### 17.4 Performance
+
+- **NFR-P1** Dealer lists and dealer detail load in under a second at the expected volume (a single business, on the order of thousands of transactions per year).
+- **NFR-P2** Balance reads are served from the **stored** running balance, never recomputed on view.
+- **NFR-P3** An Excel export of a full year of transactions completes in the browser without freezing the page.
+
+### 17.5 Usability
+
+- **NFR-U1** Balances are always presented in plain language with direction.
+- **NFR-U2** The application is fully usable one-handed on a 360 px phone browser, as well as on desktop.
+- **NFR-U3** Free-text fields impose no fixed vocabulary; past values may be suggested but never required.
+- **NFR-U4** No entry in progress is lost to a navigation accident or a dropped connection (draft persistence).
+
+### 17.6 Auditability
+
+- **NFR-A1** Every create, void, and edit is recorded with before/after state and a timestamp.
+- **NFR-A2** Every ledger entry is traceable to its source and reproducible by replay.
+
+---
+
+## 18. Technology Stack & Deployment
+
+| Layer | Choice | Notes |
+| --- | --- | --- |
+| **Frontend** | **Vite + React (TypeScript, strict)** single-page application | Deliberately chosen over Next.js: this is a single-user internal tool with no SEO or SSR requirement, and the SPA + explicit API split keeps the posting layer visible and testable. Fewer moving parts to hand over. |
+| **API** | **Hono** on Cloudflare **Workers** | Small, fast, first-class on Workers, trivial to test. |
+| **Database** | Cloudflare **D1** (SQLite) | **Separate development and production databases are mandatory.** |
+| **ORM** | **Drizzle ORM** + drizzle-kit | The Section 13 schema is written for it. |
+| **Migrations** | `drizzle-kit generate` authors; `wrangler d1 migrations apply` applies | Never hand-edit an applied migration. |
+| **Validation** | **Zod** at every server boundary | Rejects non-integer money and out-of-range input. |
+| **Styling** | **Tailwind CSS v4** with design tokens in one `@theme` block | Tokens are the single source of truth — no hard-coded hex or px in components. |
+| **Icons / fonts** | `lucide-react`; **self-hosted** Inter (`@fontsource-variable/inter`) | No CDN — the CSP forbids it. |
+| **Excel** | **SheetJS (`xlsx`)**, client-side | Keeps the Worker light; see Section 11.2. |
+| **Testing** | **Vitest** for the pure engine; **`@cloudflare/vitest-pool-workers`** for D1-backed integration tests | The Section 6 scenarios are the gating suite. |
+| **Auth** | Single-user username + password: PBKDF2-SHA256 in D1 + HMAC-signed session cookie, all Web Crypto | `AUTH_SECRET` is the only Worker secret. See Section 16.1. |
+| **Backups** | D1 Time Travel (30-day PITR) + `wrangler d1 export` SQL dumps | Card-free. See NFR-B1–B3. |
+| **Package manager** | **pnpm**, with the lockfile committed and the version pinned in `packageManager` | |
+| **CI** | GitHub Actions: typecheck, lint, test, build, `pnpm audit` on every push and pull request; Dependabot on | |
+
+**Why not Next.js:** the deprecated `@cloudflare/next-on-pages` path must not be used, and the supported OpenNext-on-Workers path adds an adapter and a build pipeline this application does not need. A Vite SPA plus a Hono API is materially simpler to run, to test, and to hand to a maintainer.
+
+**Environment & configuration:** bindings and secrets are configured through `wrangler.jsonc` and `wrangler secret` (locally, `.dev.vars`, which is gitignored). Nothing sensitive is ever committed.
+
+---
+
+## 19. Provisioning in the Maintainer's Accounts
+
+This build lives in the maintainer's GitHub account and Cloudflare account from day one, so there is never a migration later and no credential is ever shared.
+
+### 19.1 GitHub
+
+1. The maintainer creates a **private** repository under their own account.
+2. The developer is added as a collaborator with write access.
+3. Branch protection on `main`: require the CI check to pass.
+4. Dependabot enabled for `npm` and `github-actions`.
+5. `.gitignore` covers `.dev.vars`, `.wrangler`, `node_modules`, build output, and any `*.sqlite`.
+
+### 19.2 Cloudflare
+
+1. The maintainer creates (or uses) their own Cloudflare account — the free plan is sufficient and **no payment card is required**, provided R2 is not used.
+2. The developer is invited as a **member with administrator rights** on that account, so they can deploy without holding the maintainer's credentials.
+3. Create **two** D1 databases: `ledger-dev` and `ledger-prod`. Record both IDs in `wrangler.jsonc` (dev under the default environment, prod under an explicit `env.production`).
+4. Apply migrations: `wrangler d1 migrations apply ledger-dev --local`, then the same against `ledger-dev` remotely, then `ledger-prod`.
+5. Set the one secret: `wrangler secret put AUTH_SECRET --env production` with a 32-byte random value.
+6. Deploy: `pnpm deploy:prod`. The application is live on a `*.workers.dev` URL — no custom domain and no DNS are required, because authentication is enforced inside the Worker.
+7. Run the login-setup script to write the first `app_credentials` row, then change the password from inside the application.
+
+### 19.3 Optional Hardening
+
+A custom domain enables Cloudflare WAF and rate-limiting rules in front of the login endpoint. It is genuinely optional — the throttled wrong-password path is the backstop without it — and it is the only item on this list that may cost money.
+
+### 19.4 Handover Deliverables
+
+- **README** — local setup, environment and bindings, deploy, tests.
+- **Maintainer runbook** — backup and restore, the replay function, how to void and correct, incident basics.
+- The gate: the maintainer can, **from the runbook alone**, deploy, run the tests, take a backup, and restore it, without the original developer.
+
+### 19.5 Credential Recovery
+
+If the owner forgets the password, recovery is a maintainer operation: re-run the login-setup script against the production database to overwrite the `app_credentials` row. There is deliberately no email-based reset — it would be an unauthenticated write path into the only thing protecting the data.
+
+---
+
+## 20. Testing Strategy
+
+| Level | Tool | Covers |
+| --- | --- | --- |
+| **Pure unit** | Vitest | The money-math module (`roundPaise`, line amount, GST, round-to-rupee, `formatPaise`, `parseRupeesToPaise`), and the pure ledger engine including all six Section 6 scenarios |
+| **Integration** | `@cloudflare/vitest-pool-workers` against local D1 | The posting layer end to end: the Section 6 scenarios through the real database path, atomic-batch rollback on a forced mid-batch failure, back-dated insert triggering replay, void and replay, human-ID sequence generation |
+| **API** | Same runner | Auth gate (401 unauthenticated, 401 wrong password, session mints and verifies), Zod rejection of float money and future dates, CSRF origin checks |
+| **Export** | Vitest | The row-builder shared by the Excel and CSV writers: money converts exactly, voided rows are present and flagged, the totals row sums correctly |
+
+**Gating rule:** all six Section 6 scenarios must pass at **both** the pure and the D1-integration level before the ledger is considered complete. CI runs typecheck, lint, the full suite, the build, and `pnpm audit` on every push.
+
+---
+
+## 21. Scope Boundaries
+
+The following are explicitly **not** part of this application. If a request for one arises, it is a change of scope, not a bug.
+
+- **No dual valuation.** One rate per line, one balance per dealer. There is no "actual versus current" pair of accounts in this edition.
+- **No CGST/SGST versus IGST split.** A single GST amount is recorded and displayed.
+- No item, material, or HSN master. Item names and units are typed each time.
+- No GST rate master. The rate is a field on the form.
+- No advance-allocation or FIFO matching engine. The consolidated balance replaces it entirely.
+- No integration with, or import from, external accounting software. Excel export is one-way and is not re-importable.
+- No generation of legal invoices, e-way bills, or tax returns.
+- No bulk data import or historical migration. Opening positions are entered manually.
+- No analytics, ageing buckets, charts, or reporting dashboards.
+- No multi-user roles, no public access, no self-service sign-up.
+- No email, SMS, or push notifications.
+- No file or photo uploads.
+
+Anything not specified in this document is out of scope and remains in the owner's existing tools.
+
+---
+
+## 22. Assumptions & Open Items
+
+**Assumptions**
+
+- The business operates under a single registered entity and a single GST registration.
+- One GST rate applies to a whole transaction. A docket mixing rates is entered as two transactions — an accepted trade-off for a materially simpler form.
+- The owner is comfortable entering item names, units, rates, and the GST rate manually.
+- Transaction volume is modest — on the order of thousands of entries per year — comfortably within the free tier of the chosen infrastructure.
+- All dates are IST calendar dates; the business does not operate across timezones.
+
+**Open items (non-blocking; confirm during the build)**
+
+- Whether the bank account tag should also be required on **cash** payments, or remain omitted as specified.
+- Whether the dealer history should default to newest-first or oldest-first (both are supported; only the default is in question).
+- Whether the "All transactions" export should include payments as well, or remain transactions-only as specified.
+- The exact business name, logo, and colour accent for the login screen and the export title block.
+
+---
+
+## 23. Delivery Plan
+
+Each phase has a gate. Do not begin the next phase until the current gate is green.
+
+### Phase 0 — Foundations
+
+- Repository, TypeScript strict, ESLint, Prettier, committed lockfile, `.gitignore`.
+- Vite + React + Hono + Workers scaffold; `pnpm dev` serves locally; a preview deploy succeeds.
+- Development and production D1 databases created and bound.
+- **Money-math module** with exhaustive unit tests, including the Section 8.4 worked example (round-off −₹0.20).
+- `formatPaise` and `parseRupeesToPaise` with tests (Indian grouping, two decimal places, rejects floats and negatives).
+- Drizzle schema per Section 13; first migration generated and applied to both databases.
+- Test harness wired; the six Section 6 scenarios encoded as fixtures — expected **red**.
+
+**Gate:** the build succeeds, migrations apply cleanly to a fresh database, and the Section 6 suite runs and fails for the right reason.
+
+### Phase 1 — Core Ledger
+
+- Pure ledger engine: posting rules per Section 7, reversing entries, `recomputeLedger` with the `(entry_date, id)` key.
+- Posting layer with `db.batch` atomicity, write-time running balance, human-ID generation.
+- Dealer create / edit / archive, with the optional opening position.
+- Transaction create with line items, GST, discount, freight, round-off, bank account tag.
+- Payment create.
+- Minimal dealer-detail screen: headline plus chronological history. Function over form.
+
+**Gate:** all six Section 6 scenarios pass at **both** the pure and the D1-integration level; a forced mid-batch failure leaves no partial rows; balances read from stored values; nothing hard-deletes a financial row.
+
+### Phase 2 — The Real Application
+
+- Home, dealer lists, search, navigation per Section 10.2.
+- The full transaction form per Section 10.6, with `MoneyInput`, the live summary, autocomplete, and draft persistence.
+- The payment form.
+- Void: confirmation dialog, reversal, replay, struck-through display with the reversal adjacent.
+- History filters (date range, type, mode, bank account) with the "filtered" notice.
+- The "All transactions" cross-dealer view.
+- **Excel and CSV export** per Section 11 — all three exports.
+- Loading, empty, and error states; toasts; accessibility pass; PWA install.
+
+**Gate:** a full purchase and a full sale — including discount, freight, round-off, and both bank account tags — can be entered, voided, and exported on a 360 px phone; the exported figures reconcile exactly with the screen.
+
+### Phase 3 — Hardening & Handoff
+
+- Authentication per Section 16.1; security headers per Section 16.2; in-application credential change.
+- Backups: Time Travel confirmed on, `pnpm db:export` working, a restore **performed and verified** into a scratch database.
+- Read-only audit view.
+- CI green: typecheck, lint, tests, build, `pnpm audit`. Dependabot on. Secrets confirmed absent from the repository.
+- README and maintainer runbook; production deploy; first credentials set; the owner walked through the application once.
+
+**Gate:** unauthenticated API requests are rejected; a wrong password is rejected and throttled; a correct password mints a working session; the Section 16 checklist is fully green; the maintainer can deploy, test, back up, and restore from the runbook alone.
+
+---
+
+## Appendix A — Differences from the Dual-Valuation Specification
+
+For anyone who has read the earlier specification, this is precisely what changed and why.
+
+| # | Earlier specification | This edition | Consequence |
+| --- | --- | --- | --- |
+| 1 | Every shipment valued twice — an **actual** rate and a **current** (declared) rate | **One rate per line** | `transaction_lines` loses `current_rate_paise` and `current_amount_paise`; the transaction form loses a whole column |
+| 2 | **Two** running balances per dealer (actual and current), with Actual/Current tabs | **One** running balance per dealer | `ledger_entries` loses its `account` column; every posting writes one row instead of two; the dealer screen loses its tabs |
+| 3 | GST computed on the **current** value but posted as cash to the **actual** account | GST computed on the one taxable value and posted with it | The single most confusing rule in the earlier document is gone |
+| 4 | GST rate entered **per line** | GST rate entered **per transaction**, pre-filled at 18% | A mixed-rate docket becomes two transactions (Section 22) |
+| 5 | Tax type intra / inter / none, with a CGST + SGST versus IGST split | **Removed** — a single GST amount | Display-only simplification; the ledger was never affected by the split |
+| 6 | Money movements carried an `account_scope` (actual / current / both) | **Removed** — a payment posts once | The `money_movements` table becomes `payments` and loses the field |
+| 7 | Item name **required** on every line | Item name **optional** | Matches how the owner actually records quick entries |
+| 8 | No bank account concept | **`bank_account` tag (OD / Current)** on transactions and payments | New column, new form control, new filter, new export column — a tag only, never a second balance |
+| 9 | Export not specified | **Excel and CSV export** is a specified, first-class feature (Section 11) | New module, new API routes, new tests |
+| 10 | Dates stored as unix timestamps | `entry_date` stored as `YYYY-MM-DD` text | Removes a class of timezone off-by-one-day bugs |
+| 11 | Framework decision left open (Next.js + OpenNext or Vite + Hono) | **Decided: Vite + React + Hono** | One fewer decision at the start of the build |
+| 12 | Four acceptance scenarios | **Six** — void/replay and the bank-tag invariant are now explicitly gated | The two rules most likely to be got wrong are now tested |
+
+**Unchanged and non-negotiable:** integer paise everywhere; the sign convention and plain-language balance; append-only ledger with reversing entries and replay; atomic `db.batch` writes; the audit log; the single-user password gate; separate development and production databases; card-free backups with a verified restore.
+
+---
+
+## Appendix B — Money-Math Reference Implementation
+
+The whole of the money module. Nothing else in the codebase may perform arithmetic on money.
+
+```ts
+/** Half-up rounding to the nearest paise. The only rounding primitive. */
+export function roundPaise(value: number): number {
+  return Math.sign(value) * Math.round(Math.abs(value));
+}
+
+/** Half-up rounding to the nearest whole rupee, returned in paise. */
+export function roundToRupee(paise: number): number {
+  return roundPaise(paise / 100) * 100;
+}
+
+/** A line's amount: quantity may be fractional, rate is integer paise. */
+export function lineAmount(quantity: number, ratePaise: number): number {
+  return roundPaise(quantity * ratePaise);
+}
+
+/** GST on a taxable amount, at a percentage rate. */
+export function gstAmount(taxablePaise: number, gstRate: number): number {
+  return roundPaise((taxablePaise * gstRate) / 100);
+}
+
+/** The full transaction total, exactly as posted to the ledger. */
+export function transactionTotals(input: {
+  linesPaise: number[];
+  discountPaise: number;
+  freightPaise: number;
+  gstRate: number;
+}) {
+  const baseTotalPaise = input.linesPaise.reduce((a, b) => a + b, 0);
+  const taxablePaise = baseTotalPaise - input.discountPaise + input.freightPaise;
+  const gstAmountPaise = gstAmount(taxablePaise, input.gstRate);
+  const rawTotalPaise = taxablePaise + gstAmountPaise;
+  const grandTotalPaise = roundToRupee(rawTotalPaise);
+  const roundOffPaise = grandTotalPaise - rawTotalPaise;
+  return { baseTotalPaise, taxablePaise, gstAmountPaise, roundOffPaise, grandTotalPaise };
+}
+
+/** Display only. Formats from paise so no float artefact can appear. */
+export function formatPaise(paise: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+  }).format(paise / 100);
+}
+
+/** The plain-language balance headline. Never shows a bare sign. */
+export function balanceHeadline(paise: number, dealerName: string): string {
+  if (paise > 0) return `${dealerName} owes you ${formatPaise(paise)}`;
+  if (paise < 0) return `You owe ${dealerName} ${formatPaise(-paise)}`;
+  return 'Settled';
+}
+```
+
+Note that `formatPaise` and the Excel export are the **only** two places `/ 100` is permitted.
+
+---
+
+_End of specification._

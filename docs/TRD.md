@@ -8,10 +8,9 @@
 > **[SRS.md](../SRS.md) is authoritative.** This document translates it into
 > engineering decisions. Where they disagree, the SRS wins.
 >
-> The SRS is truncated below §15.4. Anything marked **[PENDING §n]** is a
-> derived decision awaiting confirmation from the untranscribed sections —
-> notably §18 (stack), §16 (security), §17 (non-functional), and Appendix B
-> (money-math reference implementation).
+> **The SRS is now complete** (transcribed in full, 29 Aug 2026). This document
+> has been reconciled against §15.5–§23 and both appendices. Where it previously
+> carried derived guesses, it now carries the spec's actual answers.
 
 ---
 
@@ -64,11 +63,11 @@ database. This is the single most important structural decision in the codebase.
 
 ## 3. Technology Stack
 
-> **DECIDED — owner, 29 Aug 2026: Vite + React + Hono on Workers.**
-> SRS §18 is untranscribed; the owner chose to settle the question rather than
-> wait for it. If §18 turns out to say otherwise, reconcile then — the module
-> boundaries in §4 are framework-agnostic, so the cost is confined to the routing
-> layer and the build config.
+> **CONFIRMED by SRS §18: Vite + React (TypeScript, strict) + Hono on Workers.**
+> The owner's 29 Aug decision matched the spec exactly, including the reasoning —
+> §18 rejects Next.js because `@cloudflare/next-on-pages` is deprecated and must
+> not be used, and the supported OpenNext-on-Workers path adds an adapter and
+> build pipeline this application does not need.
 
 ### 3.1 Vite + React + Hono on Workers
 
@@ -82,15 +81,20 @@ database. This is the single most important structural decision in the codebase.
 | Validation | Zod | Stated, SRS §10.9, §14 |
 | Export | SheetJS (`xlsx`), client-side | Stated, SRS §11.2 |
 | Tests | Vitest + `@cloudflare/vitest-pool-workers` | Runs integration tests against real D1 semantics |
-| E2E | Playwright | Mobile viewport flows |
+| Styling | Tailwind CSS v4, tokens in one `@theme` block | §18 — tokens are the single source of truth, no hard-coded hex or px |
+| Icons / fonts | `lucide-react`; self-hosted Inter (`@fontsource-variable/inter`) | §18 — no CDN, the CSP forbids it |
+| Package manager | pnpm, lockfile committed, version pinned in `packageManager` | §18 |
+| CI | GitHub Actions: typecheck, lint, test, build, `pnpm audit` | §18, §20 |
 
-**Why this over Next.js.** The SRS describes an SPA in all but name: a plain JSON
-API with cookie sessions (§14), client-side workbook generation explicitly to
-keep the Worker light (§11.2), and a PWA that caches the app shell only (§10.10).
-Next.js would add RSC and SSR machinery that this product never uses — no SEO
-requirement, no public pages, one user — while consuming Worker CPU on every
-navigation. Vite + React + Hono is the smaller, faster, more directly testable
-fit.
+**Why not Next.js (§18).** The deprecated `@cloudflare/next-on-pages` path must
+not be used, and the supported OpenNext-on-Workers path adds an adapter and a
+build pipeline this application does not need. A Vite SPA plus a Hono API is
+materially simpler to run, to test, and to hand to a maintainer.
+
+**No E2E framework is specified.** §20's test surface is Vitest for the pure
+engine and `@cloudflare/vitest-pool-workers` for D1-backed integration, with the
+Phase 2 gate verified by hand on a 360 px phone. Adding Playwright would be an
+extension beyond the spec — reasonable, but a scope decision, not an assumption.
 
 `money/`, `ledger/`, and `posting/` are framework-agnostic by construction, so
 this decision reaches only the routing layer and the build config.
@@ -132,53 +136,80 @@ this decision reaches only the routing layer and the build config.
 **No `*`, `/`, or `Math.round` on a monetary value exists anywhere else in the
 codebase.** This is enforced by review and by a lint rule.
 
-> **[PENDING Appendix B]** — the SRS holds a reference implementation that has
-> not been transcribed. The signatures below are derived from §8 and must be
-> reconciled with it.
+> **SRS Appendix B is the reference implementation and is authoritative.** The
+> signatures below are transcribed from it, not derived. Implement it verbatim.
 
 ```ts
 type Paise = number;  // integer, exact below 2^53 (≈ ₹90 trillion)
 
-/** Half-up to the nearest paise. The only rounding entry point for line math. */
+/** The only rounding primitive. Math.sign(v) * Math.round(Math.abs(v)). */
 function roundPaise(value: number): Paise;
 
-/** Half-up to the nearest whole rupee (100 paise). Used for the grand total. */
-function roundToRupee(value: Paise): Paise;
+/** To the nearest whole rupee, returned in paise: roundPaise(paise/100)*100. */
+function roundToRupee(paise: Paise): Paise;
 
-/** quantity is a real number (9,510.5 kg); rate is integer paise. */
+/** A line's amount: quantity may be fractional, rate is integer paise. */
 function lineAmount(quantity: number, ratePaise: Paise): Paise;
 
-/** Returns every derived figure for a transaction, per §8.2. */
+/** GST on a taxable amount, at a percentage rate. */
+function gstAmount(taxablePaise: Paise, gstRate: number): Paise;
+
+/** The full transaction total, exactly as posted to the ledger. */
 function transactionTotals(input: {
-  lines: { quantity: number; ratePaise: Paise }[];
-  gstRate: number;          // percent, 0–100
+  linesPaise: Paise[];        // NOTE: already-computed line amounts, not quantity/rate pairs
   discountPaise: Paise;
   freightPaise: Paise;
+  gstRate: number;
 }): {
   baseTotalPaise: Paise;
   taxablePaise: Paise;
   gstAmountPaise: Paise;
-  rawTotalPaise: Paise;
+  roundOffPaise: Paise;       // may be negative
   grandTotalPaise: Paise;
-  roundOffPaise: Paise;     // may be negative
-};
+};                            // NOTE: rawTotalPaise is internal, not returned
 
-/** Rupee text from the user → integer paise. Rejects anything ambiguous. */
-function parseRupeesToPaise(input: string): Paise | null;
-
-/** The render boundary. Intl.NumberFormat('en-IN', …) from paise. */
+/** Display only. Formats from paise so no float artefact can appear. */
 function formatPaise(paise: Paise): string;
+
+/** The plain-language headline. Never shows a bare sign. */
+function balanceHeadline(paise: Paise, dealerName: string): string;
 ```
 
-**Half-up rounding.** JavaScript's `Math.round` is half-up for positive values
-but rounds `-0.5` to `-0` rather than `-1`. Round-off values are legitimately
-negative (§6.2 gives `−20` paise), so the helpers must round the magnitude and
-reapply the sign, not delegate to `Math.round` directly.
+Two notes on the contract, both easy to get wrong:
+
+- **`transactionTotals` consumes `linesPaise`, not quantity/rate pairs.** The
+  caller runs `lineAmount()` per line first. This keeps line rounding and total
+  rounding as two distinct, separately testable steps.
+- **`rawTotalPaise` is computed internally and is not returned.** If a caller
+  needs it, derive it as `taxablePaise + gstAmountPaise` rather than changing the
+  signature.
+
+`balanceHeadline` lives in the money module, not the UI layer — which is right,
+since it is the one place the sign is translated into words, and Appendix B is
+explicit that nothing outside this module touches money.
+
+**`parseRupeesToPaise` is required but not in Appendix B.** §20 lists it in the
+money module's test surface and §10.6 specifies its behaviour (Indian grouping,
+two-decimal cap, empty ≠ zero, rejects floats and negatives). Implement it here
+to the §10.6 rules.
+
+#### On the rounding primitive
+
+`Math.sign(value) * Math.round(Math.abs(value))` rounds **half away from zero**,
+not half-up in the strict sense — `roundPaise(-0.5)` is `-1`, where a literal
+half-up would give `0`. For money this is the better behaviour (it is symmetric,
+so a credit and its reversal round identically) and every §6 figure comes out
+exact. The naming in §8.1 is loose; the implementation is correct. Do not
+"fix" it.
+
+One cosmetic edge: `roundPaise(-0.4)` returns `-0`. It compares equal to `0` and
+SQLite stores it as `0`, so it is harmless — but avoid `Object.is(x, 0)` checks
+on money, which would treat it as a different value.
 
 **Precision.** `quantity × rate_paise` is the only place a float enters the
 computation, and it is immediately rounded to an integer. `9510 × 2400 =
-22,824,000` is exact. A fractional quantity such as `9510.5 × 2400` yields
-`22,825,200` — also exact. Values remain far below 2^53. **BigInt is not needed
+22,824,000` is exact; a fractional quantity such as `9510.5 × 2400` gives
+`22,825,200`, also exact. Values remain far below 2^53. **BigInt is not needed
 and must not be introduced**; the rule is "never let a fractional money value
 persist", not "avoid `number`".
 
@@ -263,8 +294,10 @@ rows. This is an explicit integration test, not an assumption about D1.
 Steps 2–4 need IDs that only exist after their inserts. D1's batch does not let a
 later statement read an earlier statement's generated key directly, so the
 posting layer must either use `RETURNING` and a follow-up batch, or pre-allocate
-identifiers. **[PENDING]** — resolve during Phase 2 and record the chosen
-mechanism here; the correctness requirement (all-or-nothing) is fixed regardless.
+identifiers. **Still open** — the SRS does not address it. Resolve in Phase 1
+(§23) and record the chosen mechanism here; the correctness requirement
+(all-or-nothing) is fixed regardless. Pre-allocating primary keys preserves it;
+splitting into two batches does not.
 
 ## 6. Running Balance Strategy
 
@@ -293,9 +326,14 @@ recomputing running balances from zero (or from the opening entry). Called:
 - after any **back-dated insert** — an entry whose `(entry_date, id)` position is
   not last, meaning every entry after it now carries a stale balance.
 
-> **[PENDING §15.5]** — the SRS text cuts off mid-sentence at *"called after
-> **every** void, and after any back-dated insert that lands bef…"*. The
-> back-dated rule above is the obvious completion but must be confirmed.
+**Confirmed by §15.5 and §15.6.** The rule reads: called after every void, "and
+after any back-dated insert that lands **before existing entries**". §15.6 adds
+that a back-dated entry is legitimate and must be supported — the application
+posts the row, then runs `recomputeLedger(dealerId)`, so every subsequent running
+balance is rewritten. **The stored balance is never left stale.**
+
+§15.7 further requires that a void's four steps — reversal row, `is_voided` flag,
+audit row, replay — occur in **one batch**, with the replay writes batched too.
 
 ### 6.2 Ordering key
 
@@ -363,37 +401,63 @@ Stable codes so the client can branch without string-matching prose.
 
 ## 9. Authentication & Session
 
-Single-user gate. Password stored as `pbkdf2$<iters>$<salt>$<hash>` in the
-single-row `app_credentials` table (§12.3).
+**SRS §16.1 is authoritative and unusually specific. Follow it exactly.**
 
-- Hashing via WebCrypto `crypto.subtle.deriveBits` (PBKDF2-SHA256). Node's
-  `crypto` module is not available in the Workers runtime.
+Password stored as `pbkdf2$<iters>$<salt>$<hash>` in the single-row
+`app_credentials` table — **in D1, not in environment secrets**, because a Worker
+cannot rewrite its own secrets but can write to its database. That is what makes
+in-app password change possible at all.
+
+- PBKDF2-SHA256 via WebCrypto `crypto.subtle.deriveBits`. Node's `crypto` is not
+  available in the Workers runtime; Web Crypto runs identically in workerd and in
+  the Node test runner.
+- **Iterations are capped at 100,000.** Above that the Workers runtime throws
+  `NotSupportedError`. Local test runners do **not** — so a higher value passes
+  every test and then fails in production. This is the single sharpest trap in
+  the spec; pin the constant and assert it in a test.
 - Constant-time comparison of the derived hash.
-- Session cookie: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`.
-- Changing the username or password re-requires the current password (FR-U2) and
-  writes a `credential_change` audit row.
-- No sign-up, no email reset, no public route (FR-U3).
+- Session cookie: `HttpOnly; Secure; SameSite=Strict; Path=/`, 30-day expiry,
+  **HMAC-signed with `AUTH_SECRET`**. Stateless — there is no sessions table.
+- A wrong login gets a **deliberate ~½ second delay** before its 401, so the
+  endpoint cannot be hammered cheaply. This is §16.1's answer to rate limiting;
+  a WAF rule in front of the login endpoint is optional hardening (§19.3) and the
+  only item in provisioning that may cost money.
+- Credential-change routes sit behind the gate **and** re-require the current
+  password (FR-U2), writing a `credential_change` audit row.
+- **`AUTH_SECRET` is the only Worker secret, and it is what turns the gate on.
+  Unset ⇒ the gate is disabled** — a local-development convenience only. **The
+  build must refuse to start in production mode without it.** Implement that
+  check early; a silent ungated production deploy is the worst failure this
+  application has.
 
-### 9.1 Session lifetime
+### 9.1 Credential recovery (§19.5)
 
-**DECIDED — owner, 29 Aug 2026: a long session with no inactivity lock.**
+If the owner forgets the password, recovery is a **maintainer** operation:
+re-run the login-setup script against the production database to overwrite the
+`app_credentials` row. There is deliberately no email-based reset — it would be
+an unauthenticated write path into the only thing protecting the data.
 
-- Cookie `Max-Age` of 30 days, refreshed on use.
-- **No inactivity timeout and no re-authentication prompt inside the app.**
+### 9.2 Security headers (§16.2)
 
-The reasoning is deliberate: the phone's own lock screen is the real security
-boundary here, and a password prompt at a weighbridge is friction that pushes the
-owner back toward the paper notebook. The threat this app actually faces is a lost
-balance, not a lost password.
+Set on **every** response:
 
-Consequence: an unlocked, unattended phone gives full access, including the
-ability to void entries. That is accepted. It is recorded here so the trade-off is
-visible rather than implicit.
+```
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+```
 
-> **[PENDING §16, §19.5]** — login rate limiting, lockout policy, and the
-> maintainer credential-recovery procedure remain untranscribed. Rate limiting on
-> `/api/auth/login` should be implemented regardless, since it costs little and
-> the route is the only public attack surface.
+No inline scripts (nonces or hashes only if unavoidable). No CDN fonts or
+external assets — which is why §18 specifies self-hosted Inter.
+
+### 9.3 Logging (§16.3)
+
+**No money or dealer PII in logs, error traces, or analytics.** A logging helper
+redacts amount, name, and GSTIN fields. No third-party analytics or
+error-reporting service receives request bodies.
 
 ## 10. Export Pipeline
 
@@ -429,27 +493,16 @@ Requirements from §11.4:
 For a large range the API paginates and the export module concatenates before
 writing.
 
-### 10.1 The backup export — a fourth export
+### 10.1 Backup is not an export
 
-Beyond the three accountant-facing exports in §11.1, the backup posture (§13.1)
-needs a **full data export**: every dealer, transaction, transaction line,
-payment, ledger entry, and audit row — not merely what the three filtered views
-happen to cover.
+An earlier draft of this document proposed a fourth, in-app "backup export".
+**SRS §17.3 supersedes that**: backup is a **SQL dump** taken with
+`pnpm db:export` (wrapping `wrangler d1 export`), not an application feature.
 
-| | Three §11 exports | Backup export |
-| --- | --- | --- |
-| Audience | The accountant, a human | The owner's archive; possibly a restore |
-| Scope | Filtered view on screen | **Everything, unfiltered** |
-| Money | Rupees, `paise / 100` | **Integer paise, unconverted** |
-| Format | `.xlsx` / `.csv` | JSON (recommended) or `.xlsx` |
-| Re-importable | No, by §11.5 | **Yes, if the recommendation in §13.1 is accepted** |
-
-Keeping money as integer paise in the backup matters: converting to rupees and
-back is exactly the boundary crossing the money rule exists to prevent, and a
-backup that round-trips through a float is not a backup.
-
-Delivery: a browser download. Saving it to Google Drive is the owner's manual
-step — see §13.1.
+That is the better answer, and it closes the gap this document previously
+flagged. A SQL dump restores; a workbook does not. The three exports in §11 stay
+exactly as specified — human-facing, one-way, non-re-importable per §11.5 — and
+recovery is handled entirely outside them. See §13.1.
 
 ## 11. Frontend Technical Requirements
 
@@ -490,8 +543,10 @@ and its figures win.
 
 ## 12. Testing Strategy
 
-> **[PENDING §20]** — SRS §20 holds the authoritative testing strategy. This is
-> the derived minimum.
+**SRS §20 is authoritative.** Its gating rule: **all six §6 scenarios must pass
+at both the pure and the D1-integration level** before the ledger is considered
+complete. CI runs typecheck, lint, the full suite, the build, and `pnpm audit` on
+every push.
 
 | Level | Target | Tool |
 | --- | --- | --- |
@@ -500,8 +555,10 @@ and its figures win.
 | **Integration — atomicity** | Forced mid-batch failure leaves zero partial rows (§15.3) | Vitest + workers pool + local D1 |
 | **Integration — replay** | `recomputeLedger` reproduces stored balances; void restores the prior position | Vitest + local D1 |
 | **Integration — API** | Zod rejection of floats, `NaN`, out-of-range; auth gate on every non-public route | Vitest |
-| **E2E** | Scenario A end-to-end on a 360 px viewport; export downloads and reconciles | Playwright |
 | **Accessibility** | AA contrast, no colour-only meaning, labels, focus rings | axe + manual |
+
+No E2E framework is specified by §20; the Phase 2 gate is verified by hand on a
+360 px phone. Playwright would be an extension, not an omission to correct.
 
 **The six §6 scenarios are the primary acceptance tests and must pass before the
 ledger is considered complete** (§6 preamble). They are not optional and not
@@ -509,60 +566,50 @@ deferrable to a later phase.
 
 ## 13. Non-Functional Requirements
 
-> **[PENDING §17]** — the authoritative NFRs are untranscribed. Derived targets:
+**SRS §17 is authoritative** (NFR-I, NFR-S, NFR-B, NFR-P, NFR-U, NFR-A).
+Engineering notes on the ones with teeth:
 
-- **Performance.** Dealer detail renders in under 1s on a mid-range phone over
-  4G. Worker CPU well inside the limit — the export dependency lives in the
-  browser precisely to keep it there.
-- **Correctness over availability.** If a balance cannot be computed with
-  certainty, show an error rather than a number.
-- **Data durability.** See §13.1 — decided posture, with one gap flagged.
+- **NFR-P1** — dealer lists and detail load in under a second at the expected
+  volume: a single business, on the order of thousands of transactions per year.
+- **NFR-P2** — balance reads come from the **stored** running balance, never
+  recomputed on view.
+- **NFR-P3** — a full-year Excel export completes in the browser **without
+  freezing the page**. At this volume SheetJS is fast enough synchronously, but
+  if it ever isn't, the fix is chunking or a worker thread, not a smaller export.
+- **NFR-S3** — money and dealer details never reach logs, traces, or analytics.
+- **Correctness over availability** (derived) — if a balance cannot be computed
+  with certainty, show an error rather than a number.
+- **Data durability** — see §13.1.
 - **Accessibility.** Semantic HTML, real `<label>`s, visible focus rings, AA
   contrast, no meaning by colour alone, screen-reader text spelling out balance
   direction (§10.10).
 
-### 13.1 Backup and durability
+### 13.1 Backup and durability (§17.3)
 
-**DECIDED — owner, 29 Aug 2026: D1 Time Travel, plus an owner-triggered full
-data export downloaded locally or saved to Google Drive. No R2.**
+**Resolved by the SRS.** Two layers, both card-free:
 
-Two layers, covering different failure modes:
-
-| Layer | Covers | Mechanism |
+| Layer | NFR | Mechanism |
 | --- | --- | --- |
-| **D1 Time Travel** | Accidental damage caught within the retention window | Built in; restore via `wrangler d1 time-travel restore`. A maintainer operation, not an in-app feature. |
-| **Full data export** | Long-horizon archive; a copy the owner physically holds | New in-app export (§10.1 below), downloaded or saved to Google Drive |
+| Point-in-time recovery | **NFR-B1** | D1 **Time Travel** — 30-day PITR, no cost, no configuration |
+| Off-store dump | **NFR-B2** | `pnpm db:export`, wrapping `wrangler d1 export`, on a regular cadence; optionally automated by a GitHub Action to a build artifact |
+| Verified restore | **NFR-B3** | Documented **and actually performed** into a scratch database before handover |
 
-#### The gap, stated plainly
+**R2 is deliberately not used** — it requires a payment card on file, and §17.3
+states the arrangement must stay card-free. This matches the owner's 29 Aug
+decision exactly.
 
-Time Travel's window is roughly 30 days. SRS §11.5 declares exports **not
-re-importable**. Taken together, damage discovered after the Time Travel window
-leaves a readable archive but **no path back to a working database** — someone
-would re-key the ledger by hand.
+**The gap this document previously flagged is closed.** A SQL dump is restorable,
+so recovery is not limited to Time Travel's 30-day window, and §11.5's
+"not re-importable" applies only to the human-facing Excel and CSV exports. No
+extension beyond the spec is needed.
 
-**Recommendation:** make the *backup* export a machine-readable JSON dump — every
-table, money still in integer paise, no rupee conversion — and write a restore
-script that loads it. The three accountant-facing exports in §11 stay exactly as
-specified; §11.5's "not an integration format" is about those, and a backup
-serves a different purpose. This needs the owner's agreement since it is a
-deliberate extension beyond §11.
+**NFR-B3 sets a real bar:** the restore must be *performed and verified*, not
+merely documented. Verification means the schema matches **and** a byte-exact
+paise round-trip of a known dealer's ledger is confirmed. Treat an unverified
+restore procedure as no backup at all.
 
-Without that, the honest position is: **restore capability is 30 days**, and the
-downloaded workbooks are a record for humans, not a recovery mechanism.
-
-#### Google Drive
-
-Two ways to land a file in Drive, with very different costs:
-
-1. **Download, then the owner saves it to Drive.** Zero integration code, no
-   OAuth, no stored tokens, works offline-ish. Recommended default.
-2. **Direct upload via the Drive API.** Requires an OAuth client, a consent
-   flow, and refresh-token storage inside a single-user app that currently has
-   no third-party integration at all — a meaningful increase in surface area and
-   in what a leaked session grants.
-
-Start with (1). Add (2) only if the manual step proves to be the thing that stops
-backups happening.
+Where the dump file is kept — locally, or in Google Drive — is the owner's
+choice; §17.3 requires only that it is retained off the primary store.
 
 ## 14. Deployment & Migrations
 
@@ -573,8 +620,35 @@ backups happening.
 - Generated migration SQL is committed to the repository.
 - Secrets via `wrangler secret` / `.dev.vars` locally; `.dev.vars` is gitignored.
 
-> **[PENDING §19]** — provisioning in the maintainer's Cloudflare account,
-> including environment setup and the §19.5 recovery procedure.
+### 14.1 Provisioning (§19)
+
+The build lives in the maintainer's GitHub and Cloudflare accounts **from day
+one**, so there is never a migration later and no credential is ever shared.
+
+- Private GitHub repo under the maintainer's account; developer added as a
+  collaborator; **branch protection on `main` requiring CI to pass**; Dependabot
+  on for `npm` and `github-actions`.
+- Cloudflare free plan, **no payment card required** provided R2 is unused.
+  Developer invited as a member with administrator rights.
+- **Two D1 databases are mandatory: `ledger-dev` and `ledger-prod`** — dev under
+  the default environment, prod under an explicit `env.production` in
+  `wrangler.jsonc`. Development never holds real financial data unless protected
+  identically (§16.4).
+- One secret: `wrangler secret put AUTH_SECRET --env production`, 32 bytes random.
+- Deploy to a `*.workers.dev` URL. **No custom domain or DNS is required**,
+  because authentication is enforced inside the Worker. A custom domain is
+  optional hardening only (§19.3).
+- A login-setup script writes the first `app_credentials` row; the owner then
+  changes the password from inside the application.
+
+### 14.2 Handover (§19.4)
+
+Deliverables are a README (setup, bindings, deploy, tests) and a **maintainer
+runbook** (backup and restore, the replay function, voiding and correcting,
+incident basics).
+
+The gate is concrete: **the maintainer can deploy, run the tests, take a backup,
+and restore it from the runbook alone**, without the original developer.
 
 ## 15. Engineering Constraints — the non-negotiables
 
@@ -593,26 +667,24 @@ A checklist for review. Any violation is a defect regardless of test status.
 
 ## 16. Open Technical Items
 
-### 16.1 Resolved — owner decisions, 29 Aug 2026
+With the SRS complete, almost everything is answered. What remains:
 
-| Item | Decision |
-| --- | --- |
-| Framework | **Vite + React + Hono on Workers** (§3) |
-| Human-ID sequence | **Dedicated `id_sequences` table** ([BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md)) |
-| Backup posture | **D1 Time Travel + owner-triggered full export, no R2** (§13.1) |
-| Session lifetime | **30-day cookie, no inactivity lock** (§9.1) |
+| # | Item | Status |
+| --- | --- | --- |
+| 1 | Batch ID-allocation mechanism (§5.1) | **Genuinely open** — not addressed by the SRS. Decide in Phase 1. |
+| 2 | `id_sequences` table | **Owner-approved addition.** §15.3, §20 and §23 all require human-ID sequence generation, but §12/§13 still define no table for it. |
+| 3 | `source_id` convention for `opening` / `reversal` | Still unstated. §15.8 rule 3 requires every entry to trace via `source_type` + `source_id`; the derived table in [BACKEND_SCHEMA.md §4.5](BACKEND_SCHEMA.md) stands. |
+| 4 | `reverses_entry_id` has no declared FK | Recommend a self-referencing FK. |
+| 5 | The four §22 open items | Owner's call — see [PRD.md §10.2](PRD.md). All non-blocking. |
+| 6 | E2E framework | Not specified by §20. Adding Playwright is a scope decision. |
 
-### 16.2 Still open
+### 16.1 Traps worth naming
 
-| # | Item | Blocked SRS section | Blocks |
-| --- | --- | --- | --- |
-| 1 | Money-math reference implementation | Appendix B | `money/` sign-off |
-| 2 | Replay trigger on back-dated insert | §15.5 | Replay correctness |
-| 3 | Replay's exact row-exclusion rule | §15.5 | Replay correctness |
-| 4 | Batch ID-allocation mechanism | — (implementation) | Posting layer |
-| 5 | `source_id` convention for `opening` / `reversal` | §12.3 (unstated) | Schema queries |
-| 6 | Backup export re-importable? | §11.5 vs §13.1 | Real restore capability |
-| 7 | Login rate limiting, lockout policy | §16 | Auth hardening |
-| 8 | Credential recovery procedure | §19.5 | FR-U3 completion |
-| 9 | Authoritative testing strategy | §20 | Test plan sign-off |
-| 10 | Delivery plan | §23 | Reconciling the implementation plan |
+Three things in the SRS will pass tests and fail in production if missed:
+
+1. **PBKDF2 iterations above 100,000** throw `NotSupportedError` in the Workers
+   runtime but not in the Node test runner (§16.1).
+2. **`AUTH_SECRET` unset disables the gate entirely.** The build must refuse to
+   start in production mode without it (§16.1).
+3. **`SameSite=Strict`**, not `Lax` — an earlier draft of this document had it
+   wrong.

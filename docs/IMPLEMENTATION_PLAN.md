@@ -1,311 +1,233 @@
 # Implementation Plan
 
 **Product:** ASH Overseas Trading Ledger
-**Version:** 1.0 — aligned to SRS v1.0 (Simplified scope)
+**Version:** 1.1 — reconciled to SRS §23
 **Date:** 29 August 2026
-**Status:** Proposed — SRS §23 (Delivery Plan) is untranscribed
+**Status:** Follows the authoritative delivery plan in [SRS.md](../SRS.md) §23
 
-> **[PENDING §23]** — the SRS holds an authoritative delivery plan that has not
-> been transcribed. **This document is a proposal, not a transcription.** Replace
-> or reconcile it when §23 is available.
+> **SRS §23 is authoritative on phasing.** An earlier version of this document
+> proposed a six-phase plan written before §23 was available; it has been
+> replaced by the spec's four phases. The engineering detail below expands each
+> phase — it does not add phases or move gates.
 >
-> Phase 0 exists specifically to close the specification gaps that block
-> everything else.
+> **Each phase has a gate. Do not begin the next phase until the current gate is
+> green.**
 
 ---
 
 ## Sequencing Principle
 
-Build **inside out**: the pure arithmetic first, then the pure ledger decisions,
-then persistence, then transport, then interface, then export.
+§23 builds **inside out**: the pure arithmetic first, then the pure ledger
+decisions, then persistence, then the real interface, then hardening.
 
 The reason is testability. `money/` and `ledger/` have no dependencies, so the
-six §6 acceptance scenarios can pass before a database exists. If the numbers are
-wrong, everything downstream is wrong, and no amount of interface work will
-surface it. Getting the engine right first means every later phase builds on
-something already proven.
+six §6 scenarios can be *encoded* in Phase 0 and *passed* in Phase 1 before a
+screen exists. If the numbers are wrong, everything downstream is wrong, and no
+amount of interface work surfaces it.
+
+Note the shape of the Phase 0 gate — the scenario suite must run and **fail for
+the right reason**. Encoding the expected figures before the engine exists is
+what stops the engine being written to match whatever it happens to produce.
 
 ---
 
-## Phase 0 — Unblock the specification
+## Phase 0 — Foundations
 
-**Goal:** eliminate the gaps that make later phases guesswork.
-**Nothing in Phases 1–6 should start on a guess where an answer exists in the
-untranscribed SRS.**
+**Goal:** the toolchain works, the money math is proven, and the acceptance tests
+exist and fail honestly.
 
-### 0.1 Settled — owner decisions, 29 Aug 2026
+### 0.1 Repository and toolchain
 
-| Question | Answer | Recorded in |
-| --- | --- | --- |
-| Framework | **Vite + React + Hono on Workers** | [TRD.md §3](TRD.md) |
-| Human-ID sequence | **Dedicated `id_sequences` table** | [BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md) |
-| Backup posture | **D1 Time Travel + owner-triggered full export; no R2** | [TRD.md §13.1](TRD.md) |
-| Session | **30-day cookie, no inactivity lock** | [TRD.md §9.1](TRD.md) |
-
-**Phase 1 is unblocked.** Scaffolding can begin.
-
-### 0.2 Outstanding
-
-| # | Task | Blocks | Source |
-| --- | --- | --- | --- |
-| a | Obtain SRS §15.5–§23 and both appendices | Several items below | Owner — the paste was truncated at 50,000 chars |
-| b | Reconcile money-math signatures with the reference implementation | **Phase 1 sign-off** | Appendix B |
-| c | Confirm the replay trigger on back-dated inserts | Phase 2 | §15.5 |
-| d | Confirm replay's exact row-exclusion rule | Phase 2 | §15.5 |
-| e | Confirm `source_id` conventions for `opening` / `reversal` | Phase 2 | §12.3 |
-| f | Decide the batch ID-allocation mechanism | Phase 2 | Implementation |
-| g | Decide whether the backup export is re-importable | Phase 5/6 | §11.5 vs [TRD.md §13.1](TRD.md) |
-| h | Obtain login rate limiting and lockout policy | Phase 3 | §16 |
-| i | Obtain credential recovery procedure | Phase 3 | §19.5 |
-| j | Obtain authoritative testing strategy and delivery plan | Phase 6 | §20, §23 |
-
-**None of these blocks Phase 1 from starting.** Item (b) blocks Phase 1 being
-*signed off*: the money module can be built from §8 and validated against the
-§6 figures, but its signatures should be reconciled with Appendix B before the
-phase is called done.
-
-**Exit criteria:** every **[PENDING]** marker in [TRD.md §16.2](TRD.md) and
-[BACKEND_SCHEMA.md §10](BACKEND_SCHEMA.md) is resolved, or explicitly accepted as
-a documented assumption with the owner's sign-off.
-
----
-
-## Phase 1 — Ledger core
-
-**Goal:** the numbers are provably right, with no database in sight.
-
-### 1.1 Scaffold
-
-- Vite + React + Hono on Workers (0.1); TypeScript strict mode.
-- Vitest configured.
-- ESLint with a **custom rule banning `parseFloat`, `toFixed`, and bare
-  `Math.round` outside `src/money/`**. This is the single most valuable piece of
-  automation in the project — it makes the §8.5 money rule mechanically
+- TypeScript **strict**, ESLint, Prettier, committed lockfile, `.gitignore`
+  covering `.dev.vars`, `.wrangler`, `node_modules`, build output, `*.sqlite`
+  (§19.1) — already in place.
+- **pnpm**, with the version pinned in `packageManager` (§18).
+- Vite + React + Hono + Workers scaffold; `pnpm dev` serves locally; a preview
+  deploy succeeds.
+- **ESLint rule banning `parseFloat`, `toFixed`, and bare `Math.round` outside
+  `src/money/`.** Not in the SRS, but it is what makes §8.5 mechanically
   enforceable rather than a matter of reviewer vigilance.
 
-### 1.2 `src/money/`
+### 0.2 Databases
 
-Implement per [TRD.md §4.1](TRD.md): `roundPaise`, `roundToRupee`, `lineAmount`,
-`transactionTotals`, `parseRupeesToPaise`, `formatPaise`.
+- Create `ledger-dev` and `ledger-prod` (§19.2). **Two databases is mandatory**,
+  not a nicety — §16.4 forbids development holding real financial data unless
+  protected identically.
+- Record both IDs in `wrangler.jsonc`: dev under the default environment, prod
+  under an explicit `env.production`.
 
-**Watch the sign.** `Math.round(-0.5)` is `-0`, not `-1`. Round-off values are
-legitimately negative (§6.2 gives `−20`), so round the magnitude and reapply the
-sign rather than delegating to `Math.round`.
+### 0.3 Money-math module
 
-### 1.3 `src/ledger/`
+Implement **SRS Appendix B verbatim** — `roundPaise`, `roundToRupee`,
+`lineAmount`, `gstAmount`, `transactionTotals`, `formatPaise`, `balanceHeadline`
+— plus `parseRupeesToPaise` to the §10.6 rules (required by §20, absent from
+Appendix B).
 
-Implement `post()` and `replay()` per [TRD.md §4.2](TRD.md). **No imports from
-`src/db/`** — this is checked in review and is what keeps the scenarios testable
-without infrastructure.
+Three things to watch, all detailed in [TRD.md §4.1](TRD.md):
 
-### 1.4 Tests — the gate for this phase
+- `transactionTotals` takes **`linesPaise: number[]`**, not quantity/rate pairs.
+- It does **not** return `rawTotalPaise`.
+- `roundPaise` rounds half **away from zero**; that is deliberate and correct.
 
-| Test | Must produce |
-| --- | --- |
-| §8.4 worked example | base 22,824,000 → gst 4,108,320 → raw 26,932,320 → posted 26,932,300, round-off **−20** |
-| Scenario A | ends **−3,23,000** |
-| Scenario B | posts 2,69,323, `round_off_paise` **−20** |
-| Scenario C | ends **−3,19,592** |
-| Scenario D | −3,19,592 → **+34,408** |
-| Scenario E | void returns to **−5,39,544** |
-| Scenario F | one headline of **+1,77,000** |
-| Return note | sale return credits; purchase return debits |
-| Property | replay from zero always equals sequential posting |
+Exhaustive unit tests including the §8.4 worked example (round-off **−₹0.20**),
+and `formatPaise` / `parseRupeesToPaise` tests for Indian grouping, two decimal
+places, and rejection of floats and negatives.
 
-**Exit criteria:** all six §6 scenarios pass against the pure engine, in rupees
-matching the SRS **exactly**. Per the §6 preamble these are the primary
-acceptance tests and are not deferrable.
+### 0.4 Schema
 
----
+Drizzle schema per §13, plus the owner-approved `id_sequences` table
+([BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md)). First migration generated and
+applied to **both** databases.
 
-## Phase 2 — Persistence and posting
+### 0.5 Test harness
 
-**Goal:** writes are atomic, and a failure leaves nothing behind.
+The six §6 scenarios encoded as fixtures — **expected red**.
 
-### 2.1 Schema
-
-- `src/db/schema.ts` transcribed from SRS §13 **verbatim**.
-- `id_sequences` added (confirmed 0.1).
-- Optional CHECK constraints per [BACKEND_SCHEMA.md §5.1](BACKEND_SCHEMA.md).
-- `drizzle-kit generate`; commit the SQL; apply with
-  `wrangler d1 migrations apply --local`.
-
-### 2.2 Posting layer
-
-`src/posting/` builds the `db.batch([...])` arrays per
-[BACKEND_SCHEMA.md §6](BACKEND_SCHEMA.md). **Contains no arithmetic** — it calls
-the engine and writes what it returns.
-
-Resolve the ID-ordering problem (0.2f / [BACKEND_SCHEMA.md §6.1](BACKEND_SCHEMA.md))
-here, and record the chosen mechanism in the TRD.
-
-### 2.3 Replay
-
-`recomputeLedger(dealerId)` — read entries, feed the pure `replay()`, write back
-in one batch. Called after every void and after any back-dated insert.
-
-### 2.4 Tests — the gate for this phase
-
-- **Forced mid-batch failure leaves zero partial rows.** This is the explicit
-  §15.3 integration test and the reason this phase exists.
-- Replay reproduces stored balances for every dealer.
-- Void restores the exact pre-void position (Scenario E, now against real D1).
-- Back-dated insert triggers replay; all later balances corrected.
-- Human IDs increment correctly across a month boundary and **do not reuse a
-  number after a void**.
-
-**Exit criteria:** the atomicity test passes, and Scenario E round-trips through
-the database with the same figures it produced in Phase 1.
+> **Gate:** the build succeeds, migrations apply cleanly to a fresh database, and
+> the §6 suite runs and **fails for the right reason**.
 
 ---
 
-## Phase 3 — API and auth
+## Phase 1 — Core Ledger
 
-**Goal:** every route validated, every route gated.
+**Goal:** the numbers are right, through the real database, atomically.
 
-### 3.1 Auth
+### 1.1 Pure ledger engine
 
-- PBKDF2 via WebCrypto `crypto.subtle.deriveBits` — **Node's `crypto` is not
-  available in the Workers runtime**.
-- Constant-time hash comparison.
-- Session cookie: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`.
-- Credential change re-requires the current password; writes an audit row.
-- **Session: 30-day cookie, no inactivity lock** (0.1). Rate limiting on
-  `/api/auth/login` regardless of 0.2h — it is the only public attack surface.
+Posting rules per §7, reversing entries, and `recomputeLedger` on the
+`(entry_date, id)` key. **No imports from `src/db/`** — this is what keeps the
+scenarios testable without infrastructure.
 
-### 3.2 Routes
+### 1.2 Posting layer
 
-All of SRS §14. Zod at every boundary, **server-side validation authoritative and
-re-run in full**. `Origin` / `Sec-Fetch-Site` verified on every state-changing
-route. Cursor pagination on `/api/transactions` and `/api/audit`.
+`db.batch` atomicity per §15.3, write-time running balance per §15.2, human-ID
+generation per FR-T9.
 
-**Errors never echo money amounts or dealer details into logs** (§14).
+**Resolve the batch ID-allocation problem here** ([TRD.md §5.1](TRD.md)). The
+SRS does not address it. Pre-allocating primary keys preserves the all-or-nothing
+guarantee; splitting into two batches does not.
 
-### 3.3 Tests
+Replay per §15.5 and §15.6: after every void, and after any back-dated insert
+that lands before existing entries. §15.7 requires a void's four steps —
+reversal, `is_voided` flag, audit row, replay — to occur in one batch, with the
+replay writes batched too.
 
-- Every non-public route rejects an unauthenticated request.
-- Zod rejects floats, `NaN`, negative payments, `gst_rate` > 100, discount
-  exceeding base total.
-- Future-dated entry rejected **against IST**, not UTC.
-- Archived dealer rejected as a transaction target.
-- CSRF check rejects a cross-origin state change.
+### 1.3 Data operations
 
-**Exit criteria:** the full §14 surface is implemented and gated, and a float sent
-in any money field is rejected at the server boundary.
+- Dealer create / edit / archive, with the optional opening position (as an
+  `opening` ledger entry, never a mutable dealer field — §15.8 rule 4).
+- Transaction create with line items, GST, discount, freight, round-off, bank tag.
+- Payment create.
 
----
+### 1.4 Minimal dealer detail
 
-## Phase 4 — Interface
+Headline plus chronological history. **Function over form** — §23 is explicit
+that the real interface is Phase 2.
 
-**Goal:** the owner can run Scenario A end-to-end on a phone.
-
-### 4.1 Foundation
-
-- `formatPaise` / `formatDate` in `src/client/format/`.
-- **`MoneyInput`** — rupee text in, integer paise out, Indian grouping while
-  typing, two-decimal cap, empty ≠ zero. Build and test this before any form
-  uses it; it is the most safety-critical component in the interface.
-- `BalanceHeadline` / `BalanceInline` — icon + text + plain language, with
-  screen-reader text spelling out direction.
-- Draft persistence to `localStorage`, storing paise.
-
-### 4.2 Screens
-
-In dependency order: Login → Home → Dealer list → Dealer detail → Transaction
-form → Payment form → Entry detail → Void dialog → All transactions → Audit log →
-Account.
-
-### 4.3 The rules that get tested, not just reviewed
-
-- Live totals use the **same** `money/` module as the server (FR-T4).
-- Filtering **never** changes the headline or the running-balance column, and
-  always shows the "N of M" notice (Scenario F, §6.6).
-- No screen renders the words "debit" or "credit", or a bare sign.
-- The edit form does not expose date, amount, quantity, rate, GST rate, discount,
-  freight, dealer, or mode (FR-A6).
-
-### 4.4 Tests
-
-- E2E Scenario A on a 360 px viewport.
-- Filter test: apply OD filter, assert headline unchanged and notice present.
-- Draft survives a simulated navigation away and back.
-- Save failure preserves input and keeps the draft.
-
-**Exit criteria:** Scenario A completed on a phone-sized viewport in under 60
-seconds, with every figure matching the SRS.
+> **Gate:** all six §6 scenarios pass at **both** the pure and the D1-integration
+> level; a forced mid-batch failure leaves **no** partial rows; balances read from
+> stored values; nothing hard-deletes a financial row.
 
 ---
 
-## Phase 5 — Export
+## Phase 2 — The Real Application
 
-**Goal:** the accountant opens the file and does not clean it.
+**Goal:** the owner can actually run the business on it, from a phone.
 
-### 5.1 Build
+### 2.1 Navigation and screens
 
-- **Shared row-builder** first — both writers consume it so the formats cannot
-  drift (§11.2).
-- The single sanctioned `paise / 100` conversion lives here and nowhere else.
-- SheetJS writer: numeric money cells with format `#,##0.00`, **real Excel
-  dates**, frozen bold header, column widths set so nothing renders `####`.
-- CSV writer over the same rows.
-- Three exports: dealer ledger, all transactions, dealer balances (§11.3).
-- **Fourth export — the full data backup** ([TRD.md §10.1](TRD.md)): every table,
-  unfiltered, money left as **integer paise**. Downloaded; the owner saves it to
-  Google Drive manually. Whether it is re-importable is open item 0.2g.
-- Title block with business name, filters applied, closing balance in plain
-  language, generation timestamp. Totals row beneath.
-- Pagination handling for large ranges.
+Home, dealer lists, search, navigation per §10.2.
 
-### 5.2 Tests
+### 2.2 The transaction form
 
-- Exported figures reconcile **exactly** with on-screen figures.
-- Money cells are numeric, not text; `SUM` works.
-- Dates are real Excel dates.
-- **Voided rows are present**, flagged `VOIDED`, with the reversal on the next
-  row — never silently dropped.
-- Column S is numerically negative for a payable while column T reads "You owe
-  dealer".
-- CSV and XLSX produce identical row content.
+Per §10.6, with `MoneyInput`, the live summary, autocomplete, and draft
+persistence. Build `MoneyInput` **before** any form consumes it — rupee text in,
+integer paise out, Indian grouping while typing, two-decimal cap, empty ≠ zero.
+It is the most safety-critical component in the interface.
 
-**Exit criteria:** a dealer-ledger export of Scenario C opens in Excel, sums
-correctly, and shows −3,19,592 in column S with "You owe dealer" in column T.
+The payment form follows, with direction as two plain-language options.
+
+### 2.3 Void
+
+Confirmation dialog naming the entry **and the amount** (FR-A2), reversal,
+replay, struck-through display with the reversal adjacent.
+
+### 2.4 Filters and cross-dealer view
+
+History filters (date range, type, mode, bank account) **with the "filtered"
+notice**. The headline and running-balance column are always computed over all
+entries — Scenario F is the test.
+
+Then the "All transactions" cross-dealer view.
+
+### 2.5 Export
+
+**All three exports** per §11 — dealer ledger, all transactions, dealer balances
+— in Excel and CSV, over a **shared row-builder** so the formats cannot drift.
+
+### 2.6 Polish
+
+Loading, empty, and error states; toasts; accessibility pass; PWA install
+(shell only — **never** financial data).
+
+> **Gate:** a full purchase and a full sale — including discount, freight,
+> round-off, and **both** bank account tags — can be entered, voided, and
+> exported on a 360 px phone; the exported figures reconcile **exactly** with the
+> screen.
 
 ---
 
-## Phase 6 — Hardening and release
+## Phase 3 — Hardening & Handoff
 
-**Goal:** safe to trust with the only copy of the business ledger.
+**Goal:** safe to trust with the only copy of the business ledger, and
+maintainable by someone else.
 
-### 6.1 Tasks
+### 3.1 Authentication (§16.1)
 
-- **PWA**: manifest, icons, service worker precaching the **app shell only**.
-  Network-only for every `/api/*` request — no stale-while-revalidate, no
-  offline fallback that could render a figure (§10.10).
-- **Accessibility pass**: axe clean, AA contrast, focus rings, real labels, no
-  colour-only meaning, dialog focus trapping.
-- **All states**: loading, empty, error defined on every screen — including the
-  dealer detail rule that an uncertain balance shows **an error, never a number**.
-- **Integrity check**: on-demand replay-and-compare across all dealers.
-- **Backup**: D1 Time Travel verified by an actual restore, plus the full data
-  export of Phase 5.1 (0.1). No R2.
-- Production D1 provisioning, secrets, first credential seed (§19).
+Three traps that pass tests and fail in production:
 
-### 6.2 Release gate
+1. **PBKDF2 iterations are capped at 100,000.** Above that the Workers runtime
+   throws `NotSupportedError`; the Node test runner does not. Pin the constant
+   and assert it.
+2. **`AUTH_SECRET` unset disables the gate entirely.** The build must refuse to
+   start in production mode without it. Implement that check early — a silent
+   ungated production deploy is the worst failure this application has.
+3. **`SameSite=Strict`**, not `Lax`.
 
-The full checklist from [TRD.md §15](TRD.md), verified rather than assumed:
+Plus: credentials in D1 (not env secrets, so the owner can change them in-app),
+HMAC-signed session cookie with 30-day expiry, ~½ second delay before a wrong
+login's 401, Web Crypto throughout, in-application credential change re-requiring
+the current password.
 
-1. No floating-point money anywhere.
-2. All paise arithmetic inside `money/`.
-3. `ledger/` imports nothing from `db/`.
-4. Every multi-row write is one `db.batch([...])`.
-5. Nothing financial is hard-deleted.
-6. Order key is always `(entry_date, id)`.
-7. The bank tag never affects a posting or a headline.
-8. `formatPaise()` is the only money formatter.
-9. No financial data cached in the service worker.
-10. Server-side Zod validation always re-run.
+### 3.2 Security headers (§16.2)
 
-Plus: **all six §6 scenarios green**, and the §15.3 atomicity test green.
+The full six-header set on every response. No inline scripts. No CDN assets —
+which is why §18 specifies self-hosted Inter.
+
+### 3.3 Backups (§17.3)
+
+- Time Travel confirmed on (NFR-B1).
+- `pnpm db:export` working, wrapping `wrangler d1 export` (NFR-B2).
+- **A restore performed and verified into a scratch database** (NFR-B3) — schema
+  matches, and a byte-exact paise round-trip of a known dealer's ledger is
+  confirmed. An unverified restore procedure is not a backup.
+
+**No R2** — it requires a card on file, and the arrangement stays card-free.
+
+### 3.4 Audit view and CI
+
+Read-only audit view. CI green: typecheck, lint, tests, build, `pnpm audit`.
+Dependabot on. Secrets confirmed absent from the repository.
+
+### 3.5 Handover (§19.4)
+
+README and maintainer runbook; production deploy; first credentials set via the
+login-setup script; the owner walked through the application once.
+
+> **Gate:** unauthenticated API requests are rejected; a wrong password is
+> rejected and throttled; a correct password mints a working session; the §16
+> checklist is fully green; **the maintainer can deploy, test, back up, and
+> restore from the runbook alone.**
 
 ---
 
@@ -313,29 +235,34 @@ Plus: **all six §6 scenarios green**, and the §15.3 atomicity test green.
 
 | Risk | Phase | Mitigation |
 | --- | --- | --- |
-| Building on guessed spec | 0 | Phase 0 exists for this; every assumption marked and signed off |
-| A float reaches a money path | 1 | Lint rule + `money/` isolation + server-boundary rejection |
-| D1 batch cannot resolve generated ids | 2 | Pre-allocate primary keys; never split the batch |
-| Back-dated entry leaves stale balances | 2 | Replay trigger + integrity check |
-| Bank tag misread as a second ledger | 4 | Scenario F test + the mandatory "N of M" notice |
-| Service worker caches a balance | 6 | Network-only `/api/*`; explicit test |
-| D1 is the only copy of the ledger | 6 | Backup posture required before production use |
+| A float reaches a money path | 0 | Lint rule + `money/` isolation + server-boundary rejection |
+| Engine written to match its own output | 0 | Scenarios encoded before the engine exists; gate requires failing for the right reason |
+| D1 batch cannot resolve generated ids | 1 | Pre-allocate primary keys; never split the batch |
+| Back-dated entry leaves stale balances | 1 | §15.6 replay trigger + integrity check |
+| Bank tag misread as a second ledger | 2 | Scenario F test + the mandatory "N of M" notice |
+| PBKDF2 iterations pass tests, fail production | 3 | Cap at 100,000; assert the constant in a test |
+| `AUTH_SECRET` unset in production | 3 | Build refuses to start; verify on the first prod deploy |
+| Service worker caches a balance | 2 | Network-only `/api/*`; explicit test |
+| Backup exists but was never restored | 3 | NFR-B3 makes a verified restore the gate, not a document |
 
 ---
 
 ## Definition of Done
 
-The product is done when all of the following hold:
-
-- [ ] All six §6 acceptance scenarios pass, reproducing every figure exactly
-- [ ] The §15.3 forced-mid-batch-failure test passes with zero partial rows
-- [ ] Replay from zero reproduces every stored running balance for every dealer
-- [ ] No `parseFloat` / `toFixed` / bare `Math.round` exists outside `src/money/`
+- [ ] All six §6 scenarios pass at **both** pure and D1-integration level
+- [ ] Forced mid-batch failure leaves zero partial rows (§15.3)
+- [ ] Replay from zero reproduces every stored running balance
+- [ ] No `parseFloat` / `toFixed` / bare `Math.round` outside `src/money/`
+- [ ] Money module matches Appendix B exactly
 - [ ] The interface contains no "debit", no "credit", and no bare sign
 - [ ] Filtering never alters a headline or a running-balance column
 - [ ] Exports open in Excel with numeric money and real dates; `SUM` works
 - [ ] Voided entries appear in exports, flagged, with their reversals
 - [ ] Every non-public route rejects an unauthenticated request
+- [ ] Wrong password throttled ~½s; PBKDF2 iterations ≤ 100,000
+- [ ] Production build refuses to start without `AUTH_SECRET`
+- [ ] All six §16.2 security headers present on every response
 - [ ] Accessibility: AA contrast, no colour-only meaning, screen-reader direction
 - [ ] The service worker caches no financial data
-- [ ] A backup posture exists and has been tested by restoring
+- [ ] **A restore has been performed and verified** into a scratch database
+- [ ] The maintainer can deploy, test, back up, and restore from the runbook alone

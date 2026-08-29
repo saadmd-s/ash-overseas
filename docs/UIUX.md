@@ -9,8 +9,14 @@
 > requirements; this document expands them into implementable detail —
 > components, tokens, copy rules, and accessibility criteria.
 >
-> Visual tokens in §4 are **proposals**, not transcribed requirements. The SRS
-> specifies behaviour and semantics, not a palette.
+> **The SRS is complete.** §18 specifies **Tailwind CSS v4 with design tokens in
+> one `@theme` block** — tokens are the single source of truth, and **no
+> hard-coded hex or px belongs in a component**. Icons are `lucide-react`; the
+> typeface is **self-hosted Inter** (`@fontsource-variable/inter`), because
+> §16.2's CSP forbids CDN assets.
+>
+> The specific values in §4 remain proposals. Express them as `@theme` tokens;
+> the palette is open (see §4.2), the mechanism is not.
 
 ---
 
@@ -50,12 +56,18 @@ absolute.
 | `running_balance_paise < 0` | **"You owe dealer ₹X"** |
 | `running_balance_paise = 0` | **"Settled"** |
 
-Where the dealer's name is available, use it: *"Kumar Traders owes you
-₹3,23,000"* reads better than the generic form and removes any doubt about
-direction.
+Appendix B's `balanceHeadline` always takes the dealer's name, so the produced
+copy is *"Kumar Traders owes you ₹3,23,000"* — which reads better than the
+generic form and removes any doubt about direction.
 
 Payment direction is likewise plain language — **"Received from dealer"** and
 **"Paid to dealer"** — never debit/credit (§10.7).
+
+**The wording is defined in code, not in the UI layer.** SRS Appendix B provides
+`balanceHeadline(paise, dealerName)`, returning `"<dealer> owes you ₹X"`,
+`"You owe <dealer> ₹X"`, or `"Settled"`. Components call it; they do not
+reimplement it. That is what keeps the language rule from drifting screen by
+screen.
 
 ### 2.1 The one exception
 
@@ -68,7 +80,7 @@ the words.
 
 | Component | Responsibility | Key rules |
 | --- | --- | --- |
-| `BalanceHeadline` | The hero balance | Icon + text + plain language; screen-reader text spells out direction |
+| `BalanceHeadline` | The hero balance | Renders `balanceHeadline()` from the money module (Appendix B) — the UI never formats a balance itself. Icon + text; screen-reader text spells out direction |
 | `BalanceInline` | Balance in a list row | Same language rules, compact |
 | `MoneyInput` | Rupee entry → integer paise | **Emits paise only**; never holds a float |
 | `MoneyDisplay` | Render an amount | Wraps `formatPaise()`; the only money renderer |
@@ -86,10 +98,15 @@ the words.
 
 ## 4. Visual Tokens
 
-> Proposed, not specified by the SRS. Adjust freely — the **semantics** in §2 and
-> the accessibility criteria in §8 are what must not change.
+**Mechanism is specified; values are not.** §18 requires these to live in one
+Tailwind v4 `@theme` block as the single source of truth, with no hard-coded hex
+or px in any component. The particular numbers and colours below are proposals —
+adjust freely. The **semantics** in §2 and the accessibility criteria in §8 are
+what must not change.
 
 ### 4.1 Type scale
+
+Typeface: **Inter**, self-hosted via `@fontsource-variable/inter`.
 
 | Role | Size | Weight |
 | --- | --- | --- |
@@ -113,6 +130,10 @@ Colour is **always secondary** to icon and text. It never carries meaning alone
 | Payable ("you owe") | `#B4451F` | `#FB923C` |
 | Settled | `#4B5563` | `#9CA3AF` |
 | Voided row | 55% opacity + strike-through | same |
+
+**The accent colour is an open item** — SRS §22 lists the business name, logo,
+and colour accent for the login screen and export title block as still to be
+confirmed. Ship with a neutral accent until then.
 
 Deliberately **not** red/green as the sole signal: red-green colour blindness is
 common, and neither state is an "error" — a payable is a normal position.
@@ -164,7 +185,9 @@ direction. A "new entry" action from this screen pre-sets the mode.
 └────────────────────────────────────┘
 ```
 
-- History newest first, with an option to reverse the order.
+- History newest first, with an option to reverse the order. **The default is
+  an open item** — SRS §22 leaves newest-first vs oldest-first to be confirmed;
+  both must be supported either way.
 - Each row: date, label (Sale / Purchase / Received / Paid), invoice no. or
   reference, amount, bank tag, and **the running balance after that entry**.
 - Voided rows struck through with their reversal adjacent.

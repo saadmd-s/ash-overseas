@@ -9,9 +9,8 @@
 > exists to state *why* the product is being built, *who* it is for, and *what
 > counts as done*. Where a figure or rule appears in both, the SRS wins.
 >
-> The SRS is currently truncated below §15.4. Items this document marks
-> **[PENDING §n]** are inferences that must be confirmed against the untranscribed
-> sections before they are treated as settled.
+> **The SRS is complete** (transcribed in full, 29 Aug 2026). This document is
+> reconciled against it.
 
 ---
 
@@ -191,9 +190,8 @@ change re-requiring the current password. Recovery is a maintainer operation.
 
 ## 7. Release Scope
 
-The SRS §23 delivery plan is in the truncated tail. **[PENDING §23]** — the
-phasing below is a proposal, not a transcription, and should be replaced when
-§23 is available.
+**Per SRS §23.** Each phase has a gate; the next does not begin until it is
+green. Detail in [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md).
 
 | Phase | Contents | Done when |
 | --- | --- | --- |
@@ -224,41 +222,51 @@ The product is successful when the notebook is closed for good. Concretely:
 | D1 has no interactive transactions | A half-written transaction leaves an orphaned ledger entry and a wrong balance | Every multi-row write is one `db.batch([...])`; forced mid-batch failure is an explicit test (§15.3) |
 | Bank tag is mistaken for a second ledger | Balances split; the core promise breaks | Scenario F as a test; filter shows "N of M" notice; headline computed over all entries always |
 | PWA caches a stale balance | Owner negotiates on a wrong figure | Cache the app shell **only**; never cache financial data (§10.10) |
-| Back-dated entry inserted after later entries | Running balances below it are stale | Replay after any insert that is not chronologically last — **[PENDING §15.5]** |
-| Spec gap below §15.4 | Building on assumptions | Every inference marked **[PENDING §n]**; no gap treated as an absent requirement |
+| Back-dated entry inserted after later entries | Running balances below it are stale | §15.6: post the row, then `recomputeLedger(dealerId)`. The stored balance is never left stale |
+| Backup exists but was never restored | Discovering at the worst moment that it does not work | NFR-B3 makes a **verified** restore the gate, not a document |
+| PBKDF2 iterations pass tests, fail in production | The app cannot be deployed, or worse, ships ungated | §16.1 caps iterations at 100,000; assert the constant in a test |
 
 ## 10. Open Product Questions
 
-### 10.1 Answered — owner, 29 Aug 2026
+### 10.1 Answered
 
-| Question | Answer |
-| --- | --- |
-| Framework | **Vite + React + Hono on Workers** — see [TRD.md §3](TRD.md) |
-| Human-ID sequence storage | **Dedicated `id_sequences` table** — [BACKEND_SCHEMA.md §7](BACKEND_SCHEMA.md) |
-| Retention and backup | **D1 Time Travel + an owner-triggered full export, downloaded or saved to Google Drive. No R2.** — [TRD.md §13.1](TRD.md) |
-| Session lifetime | **30-day cookie, no inactivity lock** — [TRD.md §9.1](TRD.md) |
+| Question | Answer | Source |
+| --- | --- | --- |
+| Framework | **Vite + React + Hono on Workers** | Owner 29 Aug; **confirmed by SRS §18** |
+| Human-ID sequence storage | **Dedicated `id_sequences` table** | Owner 29 Aug; still absent from the SRS |
+| Backup and retention | **D1 Time Travel + `wrangler d1 export` SQL dumps. No R2 — it needs a card on file.** | Owner 29 Aug; **confirmed by §17.3 NFR-B1–B3** |
+| Session lifetime | **30-day cookie, no inactivity lock** | Owner 29 Aug; **confirmed by §16.1** |
+| Login throttling | **~½ second delay before a wrong login's 401.** No lockout. | §16.1 |
+| Credential recovery | **Maintainer re-runs the login-setup script** against production. No email reset. | §19.5 |
 
-Two of these carry consequences worth stating in product terms:
+The restore gap this document previously raised is **closed**: §17.3 specifies a
+SQL dump, which restores. §11.5's "not re-importable" applies only to the
+human-facing Excel and CSV exports.
 
-- **The session decision accepts a trade-off.** An unlocked, unattended phone
-  gives full access, including voiding entries. The phone's lock screen is the
-  security boundary. This is deliberate — a password prompt at a weighbridge is
-  friction that pushes the owner back to the notebook.
-- **Restore capability is currently ~30 days.** Time Travel covers that window;
-  beyond it, the downloaded export is a readable archive but not a restore path,
-  because §11.5 declares exports non-re-importable. Closing that means making
-  the *backup* export machine-readable — see §10.2 item 3.
+One trade-off remains worth stating plainly: the session decision accepts that an
+unlocked, unattended phone gives full access, including voiding entries. §16.5
+puts this explicitly out of the threat model, mitigated only by the 30-day expiry
+and the sign-out action.
 
-### 10.2 Still open
+### 10.2 Open — the four items from SRS §22
 
-1. **Credential recovery** — the maintainer procedure referenced by FR-U3 lives
-   in §19.5. Blocks the auth implementation being called complete.
-2. **Money-math reference implementation** — Appendix B. Blocks Phase 1 sign-off.
-3. **Is the backup export re-importable?** A deliberate extension beyond §11.5,
-   and the difference between a 30-day restore window and an indefinite one.
-   Recommended in [TRD.md §13.1](TRD.md); needs the owner's agreement.
-4. **Replay rules** — the §15.5 sentence describing the back-dated-insert trigger
-   is cut mid-word, and the exact row-exclusion rule is unstated.
+All non-blocking, all the owner's call, all confirmable during the build:
+
+1. **Should the bank account tag be required on cash payments**, or stay omitted
+   as specified?
+2. **Should dealer history default to newest-first or oldest-first?** Both are
+   supported; only the default is in question.
+3. **Should the "All transactions" export include payments**, or stay
+   transactions-only as specified?
+4. **Business name, logo, and colour accent** for the login screen and the export
+   title block.
+
+### 10.3 Open — engineering
+
+1. **Batch ID-allocation mechanism** — the SRS does not address it. Decide in
+   Phase 1; see [TRD.md §5.1](TRD.md).
+2. **`source_id` convention for `opening` and `reversal`** — still unstated even
+   in the complete SRS. Derived reading in [BACKEND_SCHEMA.md §4.5](BACKEND_SCHEMA.md).
 
 ---
 

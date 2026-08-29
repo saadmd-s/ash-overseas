@@ -9,7 +9,7 @@
 > takes through the application, the state each screen can be in, and what
 > happens on the server at each step.
 >
-> Items marked **[PENDING §n]** await the truncated sections of the SRS.
+> **The SRS is complete**; this document is reconciled against it.
 
 ---
 
@@ -57,9 +57,11 @@ Every route is behind the auth gate. There is no public page (FR-U3).
         ▼
   POST /api/auth/login
         │
-        ├── invalid ──→ generic error, no hint about which field was wrong
+        ├── invalid ──→ ~½s deliberate delay, THEN a generic 401
+        │                (no hint about which field was wrong)
         │
-        └── valid ──→ Set-Cookie (HttpOnly, Secure, SameSite=Lax)
+        └── valid ──→ Set-Cookie (HttpOnly; Secure; SameSite=Strict)
+                      HMAC-signed with AUTH_SECRET, 30-day expiry
                       audit_log: action='login'
                       ──→ Home (or the originally requested screen)
 ```
@@ -78,9 +80,15 @@ inside the app**. The app opens straight to Home; the phone's own lock screen is
 the security boundary. See [TRD.md §9.1](TRD.md) for the reasoning and the
 accepted trade-off.
 
-> **[PENDING §16]** — login rate limiting and lockout policy are still
-> untranscribed. Rate limiting on `/api/auth/login` should be built regardless:
-> it is the only public route in the application.
+**§16.1 answers the throttling question:** a wrong login gets a **deliberate
+~½ second delay** before its 401, so the endpoint cannot be hammered cheaply.
+There is no lockout — a lockout on a single-user app is a self-denial-of-service
+waiting to happen. A WAF rate-limit rule in front of the login endpoint is
+optional hardening (§19.3) and needs a custom domain.
+
+Note also **§16.1's development escape hatch**: if `AUTH_SECRET` is unset the
+gate is **disabled entirely**. That is a local convenience only, and the build
+must refuse to start in production mode without it.
 
 ## 4. Primary Flow — Record a Sale
 
@@ -134,8 +142,10 @@ every later entry now carries a stale running balance. The server runs
 `recomputeLedger(dealerId)` before responding, so the client always receives
 correct figures.
 
-> **[PENDING §15.5]** — the SRS sentence describing this cuts off mid-word. The
-> rule above is the derived completion.
+**Confirmed by §15.5 and §15.6.** Replay runs after any back-dated insert "that
+lands before existing entries", and §15.6 states plainly that a back-dated entry
+is legitimate and must be supported: the application posts the row, then runs
+`recomputeLedger(dealerId)`. **The stored balance is never left stale.**
 
 ## 5. Primary Flow — Record a Payment
 

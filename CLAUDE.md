@@ -6,20 +6,18 @@ movements with dealers, maintains one running balance per dealer, exports to
 Excel.
 
 **[SRS.md](SRS.md) is authoritative on every business rule.** This file is the
-working summary — when the two disagree, the SRS wins. Note that SRS.md is
-currently **incomplete below §15.4** (see the marker at the end of that file);
-sections 16–23 and both appendices have not been transcribed yet.
+working summary — when the two disagree, the SRS wins. SRS.md is **complete**:
+all 23 sections plus Appendix A and Appendix B.
 
 ## Status
 
-Phase 1 not started. Repo contains the specification and documentation only —
-no application code, no `package.json`, no toolchain.
+**Phase 0 (Foundations, SRS §23) not started.** Repo contains the specification
+and documentation only — no application code, no `package.json`, no toolchain.
 
 ## Documentation set
 
-All derived from the SRS. Where any of them disagrees with SRS.md, the SRS wins.
-Inferences awaiting the truncated sections are tagged **[PENDING §n]** — treat a
-gap as an unknown requirement, never as an absent one.
+All derived from the SRS and reconciled against the complete text. Where any of
+them disagrees with SRS.md, the SRS wins.
 
 | Document | Read it when |
 | --- | --- |
@@ -110,13 +108,13 @@ credits, a purchase return debits.
 ## Money math (SRS §8)
 
 ```
-line_amount_paise = roundPaise(quantity × rate_paise)      // half-up to paise
+line_amount_paise = roundPaise(quantity × rate_paise)      // half away from zero
 
 base_total_paise  = Σ line_amount_paise
 taxable_paise     = base_total_paise − discount_paise + freight_paise
 gst_amount_paise  = roundPaise(taxable_paise × gst_rate / 100)
 raw_total_paise   = taxable_paise + gst_amount_paise
-grand_total_paise = roundToRupee(raw_total_paise)          // half-up to ₹1
+grand_total_paise = roundToRupee(raw_total_paise)          // to the nearest ₹1
 round_off_paise   = grand_total_paise − raw_total_paise    // may be negative
 ```
 
@@ -151,20 +149,46 @@ considered complete**, and reproduce every figure exactly:
 - `recomputeLedger(dealerId)` replays all non-voided entries from zero (or the
   opening entry) after every void and after any back-dated insert.
 
-## Stack
+## Stack (SRS §18)
 
-Cloudflare Workers + D1 (SQLite) + Drizzle ORM. Zod at every route boundary,
-server-side validation authoritative. Single-user username/password gate
-(`pbkdf2$<iters>$<salt>$<hash>`), session cookie, no sign-up, no public route.
-Mobile-first PWA — cache the app shell only, **never** financial data, because a
-stale balance is a dangerous balance. Excel export generated client-side with
-SheetJS from paise returned by the API.
+**Vite + React (TypeScript strict) + Hono on Cloudflare Workers**, D1 (SQLite),
+Drizzle ORM, Zod at every route boundary with server-side validation
+authoritative. Tailwind v4 with all tokens in one `@theme` block. `lucide-react`;
+self-hosted Inter. pnpm. SheetJS client-side for export.
+
+**Not Next.js** — `@cloudflare/next-on-pages` is deprecated and OpenNext adds a
+pipeline this app does not need.
+
+**Two D1 databases are mandatory**: `ledger-dev` and `ledger-prod`. Development
+never holds real financial data unless protected identically (§16.4).
 
 Migrations: `drizzle-kit generate` authors the SQL, `wrangler d1 migrations
 apply` applies it. Never hand-edit an applied migration; add a new one.
 
-> The exact framework choice (Next.js vs Vite + React + Hono) sits in SRS §18,
-> which has not been transcribed yet. Confirm before scaffolding.
+Mobile-first PWA — cache the app shell only, **never** financial data, because a
+stale balance is a dangerous balance.
+
+## Auth traps (SRS §16.1) — read before touching auth
+
+1. **PBKDF2 iterations are capped at 100,000.** Above that, the Workers runtime
+   throws `NotSupportedError`; the Node test runner does not. A higher value
+   passes every test and then fails in production.
+2. **`AUTH_SECRET` unset disables the gate entirely.** Local convenience only —
+   the build must refuse to start in production mode without it.
+3. **`SameSite=Strict`**, not `Lax`. Cookie is HMAC-signed, 30-day expiry.
+4. Credentials live in **D1, not env secrets** — a Worker cannot rewrite its own
+   secrets, which is what makes in-app password change possible.
+5. A wrong login gets a deliberate **~½ second delay** before its 401.
+
+## Money module
+
+**SRS Appendix B is the reference implementation — copy it verbatim.** Two easy
+mistakes: `transactionTotals` takes `linesPaise: number[]` (already-computed line
+amounts, not quantity/rate pairs), and it does **not** return `rawTotalPaise`.
+`roundPaise` rounds half *away from zero*, which is deliberate — do not "fix" it.
+
+`parseRupeesToPaise` is required by §20 but absent from Appendix B; implement it
+to the §10.6 rules.
 
 ## Dates
 

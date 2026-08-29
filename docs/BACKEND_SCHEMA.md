@@ -10,14 +10,15 @@
 > invariants the schema cannot express, the query patterns, and the gaps found
 > while working through it.
 >
-> §7 below proposes a table that **does not exist in the SRS** but is required by
-> §15.3. It is marked clearly and needs confirmation.
+> **The SRS is now complete.** §7 below adds a table that **still does not exist
+> in the SRS** but is required by §15.3, §20 and §23 — confirmed by the owner on
+> 29 Aug 2026. Everything else here is reconciled against the full spec.
 
 ---
 
 ## 1. Overview
 
-Seven tables in the SRS, plus one proposed (§7):
+Seven tables in the SRS, plus one confirmed addition (§7):
 
 | Table | Holds |
 | --- | --- |
@@ -28,7 +29,7 @@ Seven tables in the SRS, plus one proposed (§7):
 | `ledger_entries` | The append-only posted ledger with running balances — the digital khata |
 | `audit_log` | Every create, void, and edit with before/after JSON |
 | `app_credentials` | The single user's username and password hash |
-| `id_sequences` **(proposed)** | Human-ID counters, allocated inside the atomic batch |
+| `id_sequences` **(addition)** | Human-ID counters, allocated inside the atomic batch |
 
 ### 1.1 Relationships
 
@@ -216,9 +217,11 @@ values here. It is the only monetary column that is routinely negative apart fro
 | `opening` | NULL — the dealer is already on the row | NULL |
 | `reversal` | the original source record's id | **the `ledger_entries.id` being reversed** |
 
-> **[PENDING]** — the SRS declares the columns but does not state the `opening`
-> and `reversal` conventions explicitly. The table above is the derived reading;
-> confirm before implementation.
+> **Still unstated in the complete SRS.** §12.3 declares the columns and §15.8
+> rule 3 requires every entry to trace to a source, but the `opening` and
+> `reversal` conventions are never spelled out. The table above is the derived
+> reading — it is the only one that satisfies §15.8 rule 3 for all four
+> `source_type` values.
 
 ## 5. Invariants
 
@@ -313,7 +316,8 @@ is an explicit integration test (§15.3), not an assumption about D1's behaviour
 Steps 3 and 4 need `transactions.id`, which only exists after step 2. D1's batch
 does not let a later statement read an earlier one's generated key.
 
-**[PENDING]** — resolve during Phase 2. Two workable approaches:
+**Still open — the complete SRS does not address it.** Resolve in Phase 1 (§23).
+Two approaches:
 
 - Pre-allocate the primary key (application-generated id rather than
   `AUTOINCREMENT`), so every statement in the batch knows every id up front.
@@ -410,10 +414,16 @@ ORDER BY entry_date, id;
 Feed to the pure `replay()` function, then write back the recomputed balances in
 one batch.
 
-> **[PENDING §15.5]** — precisely which rows replay excludes (voided sources
-> only, or voided sources *and* their reversals) is in the truncated text. The
-> two readings give the same final balance but different intermediate rows, so
-> this must be confirmed rather than guessed.
+**§15.5 says "all non-voided entries", recomputed from zero (or the opening
+entry).** It does not spell out whether a reversal row is itself replayed or
+re-derived. Both readings reach the same final balance; they differ in the
+intermediate rows the history shows.
+
+The reading consistent with §15.8 rule 5 — "voided sources retain their rows;
+their effect is neutralised **only by reversing entries**" — is that reversal
+rows are real ledger entries that **are** replayed, not re-derived. Take that
+reading: it keeps the reversal visible in the history, which §10.5 and §11.4
+both require.
 
 ### 8.5 Integrity check
 
@@ -439,8 +449,11 @@ rounding drift to excuse a mismatch.
 The first migration must seed `app_credentials` with exactly one row (I12). The
 initial password hash is supplied out-of-band by the maintainer, never committed.
 
-> **[PENDING §19]** — the provisioning procedure, including how that first
-> credential is set and the §19.5 recovery path, is untranscribed.
+**§19.2 step 7:** a **login-setup script** writes the first `app_credentials`
+row after the production deploy; the owner then changes the password from inside
+the application. **§19.5:** credential recovery is the same script re-run against
+the production database. There is deliberately no email-based reset — it would be
+an unauthenticated write path into the only thing protecting the data.
 
 ## 10. Schema Gaps and Open Items
 
@@ -450,6 +463,6 @@ initial password hash is supplied out-of-band by the maintainer, never committed
 | 2 | No backup or retention posture stated | D1 holds the only copy of the ledger | **RESOLVED** — Time Travel + owner-triggered full export, no R2. See [TRD.md §13.1](TRD.md), which flags the restore gap |
 | 3 | No `sessions` table | Session storage undefined | **RESOLVED in shape** — 30-day stateless signed cookie, no server-side session rows needed (see [TRD.md §9.1](TRD.md)) |
 | 4 | `reverses_entry_id` has no declared FK to `ledger_entries.id` | Orphan reversal possible | Add self-referencing FK, or enforce in the posting layer |
-| 5 | `source_id` conventions for `opening` and `reversal` unstated | Ambiguous joins | Derived table in §4.5 — confirm against the SRS tail |
+| 5 | `source_id` conventions for `opening` and `reversal` unstated | Ambiguous joins | **Still unstated in the full SRS.** §15.8 rule 3 requires every entry to trace via `source_type` + `source_id`; the derived table in §4.5 stands |
 | 6 | No unique constraint on `transaction_lines (transaction_id, line_no)` | Duplicate line numbers possible | Recommend adding |
-| 7 | Replay's exact row-exclusion rule | Intermediate rows may differ | **[PENDING §15.5]** |
+| 7 | Replay's row-exclusion rule | Intermediate rows may differ | **RESOLVED by reading** — §15.8 rule 5 implies reversal rows are replayed, not re-derived (§8.4) |

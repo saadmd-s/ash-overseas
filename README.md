@@ -42,19 +42,11 @@ derived from it — where they disagree, the SRS wins.
 | [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md) | DDL, invariants, query patterns, schema gaps |
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phased build plan and definition of done |
 
-### ⚠ The specification is incomplete
+## Documentation status
 
-`SRS.md` is **truncated below §15.4**. The source document was cut in transit, so
-these are missing and must be supplied before the affected work starts:
-
-- §15.5 (replay), §16 (security), §17 (non-functional), §18 (**stack decision**),
-  §19 (provisioning, incl. credential recovery), §20 (testing), §21–§23
-- Appendix A (differences from the earlier dual-valuation spec)
-- Appendix B (**money-math reference implementation**)
-
-A marker at the end of `SRS.md` lists this precisely. Throughout the derived
-documents, inferences that await those sections are tagged **[PENDING §n]**.
-Treat a gap as an unknown requirement, never as an absent one.
+`SRS.md` is **complete** — all 23 sections plus Appendix A (differences from the
+earlier dual-valuation spec) and Appendix B (the money-math reference
+implementation). Every derived document in `docs/` has been reconciled against it.
 
 ## The rules that matter most
 
@@ -95,17 +87,31 @@ reproducing every figure exactly:
 Zod at every route boundary, a single-user password gate, a mobile-first PWA, and
 Excel export generated client-side with SheetJS.
 
-Backup is D1 Time Travel plus an owner-triggered full data export, downloaded or
-saved to Google Drive — no R2. See [docs/TRD.md §13.1](docs/TRD.md), which flags
-one gap: §11.5 makes exports non-re-importable, so restore capability is
-currently the ~30-day Time Travel window.
+Styling is Tailwind CSS v4 with all tokens in one `@theme` block; icons are
+`lucide-react`; Inter is self-hosted because the CSP forbids CDN assets. Package
+manager is pnpm; CI runs typecheck, lint, tests, build and `pnpm audit`.
+
+Backup is D1 Time Travel (30-day PITR) plus `wrangler d1 export` SQL dumps.
+**R2 is deliberately unused** — it requires a payment card, and the arrangement
+stays card-free. A restore must be **performed and verified**, not merely
+documented (NFR-B3).
 
 ## Getting started
 
-Nothing to run yet. When Phase 1 begins, start at
-[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — Phase 0 exists
-specifically to close the specification gaps listed above before any code depends
-on a guess.
+Nothing to run yet. Start at
+[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md), which follows the
+four-phase delivery plan in SRS §23. Phase 0 builds the toolchain, both D1
+databases, the money-math module, and the schema — and ends with the six §6
+acceptance scenarios encoded and **failing for the right reason**.
+
+Three traps in the spec are worth knowing before you write auth code:
+
+- **PBKDF2 iterations are capped at 100,000** — above that the Workers runtime
+  throws `NotSupportedError`, but the Node test runner does not, so a higher
+  value passes every test and then fails in production (§16.1).
+- **`AUTH_SECRET` unset disables the gate entirely.** The build must refuse to
+  start in production mode without it (§16.1).
+- The session cookie is **`SameSite=Strict`**, not `Lax`.
 
 ## Licence
 
