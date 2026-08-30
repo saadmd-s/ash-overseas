@@ -9,10 +9,14 @@ It is a faithful digital version of a working notebook — not accounting softwa
 It does not file taxes, generate legal invoices, or replace the tools used for
 statutory filing.
 
-> **Status:** Phases 0–2 of [SRS §23](SRS.md) are complete — ledger engine,
-> posting layer, API, mobile-first interface, and all three exports. 146 tests
-> green. **Phase 3 (auth, security headers, verified backup restore, handover)
-> is next, and there is no auth gate yet.**
+> **Status:** Phases 0-3 of [SRS §23](SRS.md) are complete. Ledger engine,
+> posting layer, API, mobile-first interface, all three exports, and now the
+> single-user login gate, the six security headers, the read-only audit view,
+> and a **verified** backup restore. **196 tests green.**
+>
+> Not yet done: the Cloudflare account does not exist, so nothing is deployed and
+> the production restore drill has not been run. See
+> [docs/RUNBOOK.md](docs/RUNBOOK.md#first-time-provisioning).
 
 ---
 
@@ -43,6 +47,7 @@ derived from it — where they disagree, the SRS wins.
 | [docs/UIUX.md](docs/UIUX.md)                               | Components, tokens, copy rules, accessibility                  |
 | [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md)           | DDL, invariants, query patterns, schema gaps                   |
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Phased build plan and definition of done                       |
+| **[docs/RUNBOOK.md](docs/RUNBOOK.md)**                     | Deploy, back up, restore, reset a password, fix a wrong entry  |
 
 ## Documentation status
 
@@ -93,26 +98,44 @@ Styling is Tailwind CSS v4 with all tokens in one `@theme` block; icons are
 `lucide-react`; Inter is self-hosted because the CSP forbids CDN assets. Package
 manager is pnpm; CI runs typecheck, lint, tests, build and `pnpm audit`.
 
-Backup is D1 Time Travel (30-day PITR) plus `wrangler d1 export` SQL dumps.
+Backup is D1 Time Travel (30-day PITR) plus SQL dumps via `pnpm db:export`.
 **R2 is deliberately unused** — it requires a payment card, and the arrangement
-stays card-free. A restore must be **performed and verified**, not merely
-documented (NFR-B3).
+stays card-free. The restore is **performed and verified**, not merely documented
+(NFR-B3): `pnpm db:verify-restore` replays a dump into a scratch database and
+compares one dealer's whole ledger byte for byte in integer paise.
 
 ## Getting started
 
-Nothing to run yet. Start at
-[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md), which follows the
-four-phase delivery plan in SRS §23. Phase 0 builds the toolchain, both D1
-databases, the money-math module, and the schema — and ends with the six §6
-acceptance scenarios encoded and **failing for the right reason**.
+Needs **Node 22.18+** (24 recommended) and pnpm 10.
 
-Three traps in the spec are worth knowing before you write auth code:
+```bash
+pnpm install
+cp .dev.vars.example .dev.vars      # set AUTH_SECRET, or leave it blank
+pnpm db:migrate:local
+pnpm dev                            # http://localhost:5173
+```
 
-- **PBKDF2 iterations are capped at 100,000** — above that the Workers runtime
+With `AUTH_SECRET` blank the login gate is off — a local convenience only, and
+the interface says so in a standing banner. To develop against the gate, set the
+secret and write yourself a login:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+pnpm auth:setup --local
+```
+
+`pnpm check` runs typecheck, lint, the full test suite, and the build. Everything
+operational — deploying, backups, restores, password recovery, correcting a wrong
+entry — is in **[docs/RUNBOOK.md](docs/RUNBOOK.md)**.
+
+### Three traps worth knowing before touching auth
+
+- **PBKDF2 iterations are capped at 100,000.** Above that the Workers runtime
   throws `NotSupportedError`, but the Node test runner does not, so a higher
-  value passes every test and then fails in production (§16.1).
-- **`AUTH_SECRET` unset disables the gate entirely.** The build must refuse to
-  start in production mode without it (§16.1).
+  value passes every test and then fails in production (§16.1). A test asserts
+  the constant.
+- **`AUTH_SECRET` unset disables the gate entirely.** Production refuses to serve
+  without it, and `pnpm deploy:prod` refuses to ship without it.
 - The session cookie is **`SameSite=Strict`**, not `Lax`.
 
 ## Licence

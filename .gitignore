@@ -81,6 +81,10 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# Database dumps — a complete copy of the ledger in plain text (SRS §17.3).
+# `pnpm db:export` writes here and NOTHING in it may ever be committed.
+backups/
+
 # Exported spreadsheets — generated artefacts, may contain business figures
 *.xlsx
 *.xls

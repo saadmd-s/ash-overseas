@@ -1,0 +1,32 @@
+{
+  // The maintenance scripts (SRS §19) are the recovery path — credential setup,
+  // backup, and the restore drill. They are typechecked exactly like the
+  // application, in their own project because they run in Node rather than in
+  // the Worker or the browser, and because they import each other with explicit
+  // `.ts` extensions (which is what Node's native type stripping requires).
+  "compilerOptions": {
+    "target": "ES2023",
+    // DOM is here for the Web Crypto types only: scripts/set-credentials.ts
+    // imports the Worker's own hashing module, which is written against Web
+    // Crypto so that one implementation runs in workerd, in Node, and here.
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  },
+  "include": ["scripts"]
+}

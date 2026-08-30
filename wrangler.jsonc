@@ -12,11 +12,29 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
 
+  // Not a secret — it only tells the Worker which posture to take. In the
+  // default (development) environment a missing AUTH_SECRET disables the gate,
+  // which is a local convenience. Under env.production the same condition makes
+  // the Worker refuse to serve at all (SRS §16.1). See src/worker/index.ts.
+  "vars": { "APP_ENV": "development" },
+
   // The SPA is served as static assets; unmatched paths fall back to index.html
   // so client-side routing works. Every /api route is handled by the Worker.
+  //
+  // ⚠ run_worker_first MUST stay true. By default the assets service answers a
+  // matching path BEFORE the Worker is invoked at all, which means:
+  //   - the HTML document ships without the §16.2 security headers — and
+  //     X-Frame-Options / frame-ancestors matter on the document far more than
+  //     on a JSON body;
+  //   - the fail-closed check in src/worker/index.ts is skipped, so a
+  //     production Worker with no AUTH_SECRET would still hand out the app
+  //     shell instead of refusing to serve.
+  // Both were observed, not theorised. The cost is one Worker invocation per
+  // asset request, which for a single-user application is nothing.
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
+    "run_worker_first": true,
   },
 
   // SRS §16.4 and §19.2: SEPARATE development and production databases are
@@ -40,6 +58,8 @@
 
   "env": {
     "production": {
+      // Turns on the fail-closed check: no AUTH_SECRET ⇒ serve nothing.
+      "vars": { "APP_ENV": "production" },
       "d1_databases": [
         {
           "binding": "DB",

@@ -27,6 +27,20 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  /**
+   * Start every test with the auth gate OFF, whatever the machine has lying
+   * around.
+   *
+   * The test pool loads `.dev.vars`, which is gitignored and sets AUTH_SECRET
+   * on any machine set up for local development. Without this line the suite
+   * passes in CI and fails on the developer's laptop, for a reason nothing in
+   * the failure output points at. The auth tests arm the gate explicitly and
+   * unset it again (src/worker/auth.test.ts); everything else is testing
+   * business rules, not the gate, and says so by starting from here.
+   */
+  delete (env as { AUTH_SECRET?: string }).AUTH_SECRET;
+  (env as { APP_ENV?: string }).APP_ENV = 'development';
+
   await env.DB.exec('PRAGMA foreign_keys = ON');
 
   await env.DB.batch([

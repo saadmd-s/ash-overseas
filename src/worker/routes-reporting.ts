@@ -7,7 +7,7 @@
  * Every export returns money as **integer paise** (§11.2); the browser performs
  * the single conversion at the boundary.
  *
- * ⚠ NOT YET GATED — see the note at the top of routes.ts. Phase 3.
+ * Behind the session gate, like everything else under /api — see index.ts.
  */
 
 import { Hono } from 'hono';
@@ -218,5 +218,36 @@ reporting.get('/export/balances', async (c) => {
     kind: 'balances',
     filters: filtersFrom(c.req.url),
     rows: await balanceRows(db, { includeArchived: c.req.query('includeArchived') === 'true' }),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit log — SRS §14, NFR-A1
+// ---------------------------------------------------------------------------
+
+/**
+ * The read-only audit view, newest first.
+ *
+ * Read-only in the strongest sense: there is no route anywhere that updates or
+ * deletes an audit row. The table is append-only, and this is the only way to
+ * look at it (§16.3).
+ */
+reporting.get('/audit', async (c) => {
+  const db = makeDb(c.env.DB);
+  const cursor = c.req.query('cursor');
+
+  const rows = await db
+    .select()
+    .from(schema.auditLog)
+    // Ordered by id, not by `at`: several rows written inside one db.batch share
+    // a timestamp to the second, and only the id separates them reliably.
+    .where(cursor ? sql`${schema.auditLog.id} < ${Number(cursor)}` : undefined)
+    .orderBy(desc(schema.auditLog.id))
+    .limit(PAGE_SIZE + 1);
+
+  const page = rows.slice(0, PAGE_SIZE);
+  return c.json({
+    entries: page,
+    nextCursor: rows.length > PAGE_SIZE ? (page[page.length - 1]?.id ?? null) : null,
   });
 });

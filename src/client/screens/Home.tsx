@@ -62,6 +62,14 @@ export function Home({
           All transactions
         </button>
         <ExportMenu path="/api/export/balances" label="Balances" />
+        {/* Plain anchors: App intercepts in-app links, so these route without a
+            reload and still work if JavaScript is mid-load. */}
+        <a href="/audit" className="btn">
+          Audit log
+        </a>
+        <a href="/settings" className="btn">
+          Settings
+        </a>
       </div>
 
       <h2 className="mb-2 text-sm font-medium text-[var(--color-muted)]">Dealers</h2>

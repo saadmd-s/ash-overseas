@@ -7,12 +7,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, type Dealer } from './lib';
+import { api, setSessionLostHandler, type Dealer } from './lib';
 import { ErrorState, Loading, Toast } from './components';
 import { AllTransactions, DealerList, Home, NewDealer } from './screens/Home';
 import { DealerDetail } from './screens/DealerDetail';
 import { TransactionForm } from './screens/TransactionForm';
 import { PaymentForm } from './screens/PaymentForm';
+import { AuditView, GateDisabledBanner, Login, Settings, type AuthState } from './screens/Auth';
 
 type Route =
   | { name: 'home' }
@@ -21,13 +22,17 @@ type Route =
   | { name: 'transaction'; id: number; mode: 'purchase' | 'sale' }
   | { name: 'payment'; id: number }
   | { name: 'all' }
-  | { name: 'new-dealer' };
+  | { name: 'new-dealer' }
+  | { name: 'settings' }
+  | { name: 'audit' };
 
 function parse(pathname: string): Route {
   const parts = pathname.split('/').filter(Boolean);
   if (parts[0] === 'purchase') return { name: 'list', type: 'supplier' };
   if (parts[0] === 'sale') return { name: 'list', type: 'buyer' };
   if (parts[0] === 'transactions') return { name: 'all' };
+  if (parts[0] === 'settings') return { name: 'settings' };
+  if (parts[0] === 'audit') return { name: 'audit' };
   if (parts[0] === 'dealers') {
     if (parts[1] === 'new') return { name: 'new-dealer' };
     const id = Number(parts[1]);
@@ -42,7 +47,48 @@ function parse(pathname: string): Route {
   return { name: 'home' };
 }
 
+/**
+ * The gate, client side — SRS §16.1.
+ *
+ * This decides what is DRAWN, never what is permitted: every figure comes from
+ * `/api`, which is behind the server gate. If this component were bypassed
+ * entirely the attacker would still see an empty shell.
+ */
 export function App() {
+  const [auth, setAuth] = useState<AuthState | null>(null);
+  const [authFailed, setAuthFailed] = useState(false);
+
+  const refreshAuth = useCallback(() => {
+    setAuthFailed(false);
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then((r) => r.json() as Promise<AuthState>)
+      .then(setAuth)
+      .catch(() => setAuthFailed(true));
+  }, []);
+
+  useEffect(refreshAuth, [refreshAuth]);
+
+  // A 401 from anywhere drops straight back to the login screen, rather than
+  // leaving each screen to render its own puzzled error.
+  useEffect(() => {
+    setSessionLostHandler(() => setAuth((a) => (a ? { ...a, authenticated: false } : a)));
+  }, []);
+
+  if (authFailed) {
+    return <ErrorState message="Could not reach the server." onRetry={refreshAuth} />;
+  }
+  if (!auth) return <Loading what="the application" />;
+  if (!auth.authenticated) return <Login auth={auth} onSignedIn={refreshAuth} />;
+
+  return (
+    <>
+      {auth.gate === 'disabled' && <GateDisabledBanner />}
+      <SignedIn auth={auth} onAuthChanged={refreshAuth} />
+    </>
+  );
+}
+
+function SignedIn({ auth, onAuthChanged }: { auth: AuthState; onAuthChanged: () => void }) {
   const [route, setRoute] = useState<Route>(() => parse(window.location.pathname));
   const [toast, setToast] = useState<string | null>(null);
 
@@ -79,7 +125,13 @@ export function App() {
   return (
     <>
       <Chrome route={route} navigate={navigate} />
-      <Screen route={route} navigate={navigate} showToast={showToast} />
+      <Screen
+        route={route}
+        navigate={navigate}
+        showToast={showToast}
+        auth={auth}
+        onAuthChanged={onAuthChanged}
+      />
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </>
   );
@@ -100,10 +152,14 @@ function Screen({
   route,
   navigate,
   showToast,
+  auth,
+  onAuthChanged,
 }: {
   route: Route;
   navigate: (path: string, replace?: boolean) => void;
   showToast: (message: string) => void;
+  auth: AuthState;
+  onAuthChanged: () => void;
 }) {
   switch (route.name) {
     case 'home':
@@ -120,6 +176,12 @@ function Screen({
 
     case 'all':
       return <AllTransactions />;
+
+    case 'settings':
+      return <Settings auth={auth} onChanged={onAuthChanged} />;
+
+    case 'audit':
+      return <AuditView />;
 
     case 'new-dealer':
       return (

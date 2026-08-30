@@ -197,10 +197,34 @@ Loading, empty, and error states; toasts; accessibility pass; PWA install
 
 ---
 
-## Phase 3 — Hardening & Handoff
+## Phase 3 — Hardening & Handoff — **COMPLETE, except deployment**
 
 **Goal:** safe to trust with the only copy of the business ledger, and
 maintainable by someone else.
+
+**Delivered.** Gate in `src/worker/auth.ts`, crypto in `src/auth/crypto.ts`,
+mounted in `src/worker/index.ts` (the middleware order is the design). 30 auth
+tests; 196 in total. Operations are documented in
+[RUNBOOK.md](RUNBOOK.md), which is the §19.4 handover deliverable.
+
+**Two findings worth carrying forward**, both caught by doing rather than
+planning:
+
+1. Static assets **bypass the Worker** unless `run_worker_first: true` is set, so
+   the HTML document was shipping with none of the §16.2 headers and the
+   production fail-closed check was being skipped for the app shell.
+2. A raw `wrangler d1 export` dump of this schema **cannot be replayed** —
+   alphabetical statement order puts `INSERT INTO "transaction_lines"` before
+   `CREATE TABLE transactions`. `pnpm db:export` now reorders it. This is exactly
+   the failure NFR-B3 exists to catch, and it would have been discovered during a
+   real restore otherwise.
+
+**Still outstanding** — all of it needs the Cloudflare account, which does not
+exist yet: create the two D1 databases, paste their IDs into `wrangler.jsonc`,
+set `AUTH_SECRET`, deploy, run `pnpm auth:setup --env production`, and run the
+restore drill against production. RUNBOOK §First-time provisioning is the script.
+Also outstanding and account-independent: `PATCH /api/transactions/:id` (§14),
+and looking at the interface at 360 px.
 
 ### 3.1 Authentication (§16.1)
 

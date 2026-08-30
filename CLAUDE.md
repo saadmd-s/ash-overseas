@@ -11,16 +11,31 @@ all 23 sections plus Appendix A and Appendix B.
 
 ## Status
 
-**Phases 0, 1 and 2 complete (SRS §23).** Money module, pure ledger engine,
-posting layer, full API, the real mobile-first interface (forms with
-`MoneyInput` and draft persistence, void dialog, filters, cross-dealer view),
-all three exports in Excel and CSV, and the PWA shell. 146 tests green: the six
-§6 scenarios at **both** the pure and D1-integration level, the §15.3 atomicity
-test, and the Phase 2 reconciliation gate. **Phase 3 (hardening and handoff) is
-next.**
+**Phases 0–3 complete (SRS §23).** Money module, pure ledger engine, posting
+layer, full API, the real mobile-first interface (forms with `MoneyInput` and
+draft persistence, void dialog, filters, cross-dealer view), all three exports
+in Excel and CSV, the PWA shell — and now the single-user login gate, the six
+§16.2 security headers, CSRF checks, in-app credential change, the read-only
+audit view, and a **verified** backup restore.
 
-⚠ **There is no auth gate yet** — it is Phase 3 (§16.1, §23). The Worker now has
-write paths, so the gate must be in place before any real data is entered.
+**196 tests green**: the six §6 scenarios at **both** the pure and
+D1-integration level, the §15.3 atomicity test, the Phase 2 reconciliation gate,
+and the Phase 3 auth gate.
+
+**Operational work lives in [docs/RUNBOOK.md](docs/RUNBOOK.md)** — deploy,
+backup, restore, password recovery, correcting a wrong entry.
+
+### What is NOT done
+
+- **Nothing is deployed.** The Cloudflare account does not exist yet, so the two
+  D1 databases are unmade, `wrangler.jsonc` still holds
+  `REPLACE_WITH_LEDGER_*_ID`, and the production restore drill (NFR-B3) has not
+  been run. The drill _is_ verified locally. See RUNBOOK §First-time provisioning.
+- **`PATCH /api/transactions/:id` is missing.** §14 lists it and rule 5 below
+  depends on it: non-financial fields (notes, reference tag, item name) are
+  supposed to be editable in place. Today the only correction path is void and
+  re-enter, which is heavier than the spec intends for a typo.
+- **The layout has never been seen at 360 px in a real browser.**
 
 ## Documentation set
 
@@ -35,6 +50,7 @@ them disagrees with SRS.md, the SRS wins.
 | [docs/UIUX.md](docs/UIUX.md)                               | Building UI; components, copy rules, accessibility        |
 | [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md)           | Touching the database; DDL, invariants, queries           |
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Deciding what to build next                               |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md)                         | Deploying, backing up, restoring, resetting a password    |
 
 ---
 
@@ -177,6 +193,11 @@ Mobile-first PWA — cache the app shell only, **never** financial data, because
 stale balance is a dangerous balance.
 
 ## Auth traps (SRS §16.1) — read before touching auth
+
+Implemented in `src/auth/crypto.ts` (Web Crypto only, so the same code runs in
+workerd and in Node) and `src/worker/auth.ts` (middleware and routes). The gate
+is mounted in `src/worker/index.ts`, where the middleware order **is** the
+security design — read the comments there before rearranging it.
 
 1. **PBKDF2 iterations are capped at 100,000.** Above that, the Workers runtime
    throws `NotSupportedError`; the Node test runner does not. A higher value

@@ -56,6 +56,12 @@ export default tseslint.config(
   },
 
   {
+    // The maintenance scripts run in Node, not in the Worker or the browser.
+    files: ['scripts/**/*.ts'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
+  {
     files: ['src/client/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,

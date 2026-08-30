@@ -20,17 +20,42 @@ export class RequestFailed extends Error {
   }
 }
 
+/**
+ * Called when the server says the session is gone — expired, signed out
+ * elsewhere, or revoked by a password change. Registered by App, which drops
+ * back to the login screen.
+ *
+ * A 30-day cookie WILL expire mid-use one day, and the alternative to handling
+ * it here is every screen showing its own "could not load" error while the real
+ * cause is that the owner needs to sign in again.
+ */
+let onSessionLost: (() => void) | null = null;
+
+export function setSessionLostHandler(handler: () => void): void {
+  onSessionLost = handler;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    // Never let a stale answer stand in for a balance (§18, and the same reason
+    // the service worker refuses to cache /api).
+    cache: 'no-store',
   });
 
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { error?: ApiError } | null;
-    throw new RequestFailed(
-      body?.error ?? { code: 'UNKNOWN', message: 'Something went wrong. Please try again.' },
-    );
+    const error = body?.error ?? {
+      code: 'UNKNOWN',
+      message: 'Something went wrong. Please try again.',
+    };
+
+    // A failed LOGIN is BAD_CREDENTIALS, not UNAUTHENTICATED, so this cannot
+    // fire on the login screen itself and bounce it in a loop.
+    if (res.status === 401 && error.code === 'UNAUTHENTICATED') onSessionLost?.();
+
+    throw new RequestFailed(error);
   }
   return (await res.json()) as T;
 }
@@ -113,6 +138,25 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export function formatDate(ymd: string): string {
   const [y, m, d] = ymd.split('-');
   return `${d} ${MONTHS[Number(m) - 1]} ${y}`;
+}
+
+/**
+ * An instant — `created_at`, `at` — in IST.
+ *
+ * Separate from `formatDate` on purpose: those are text calendar dates that
+ * must never touch a `Date`, while these are genuine points in time that must
+ * be shown in the owner's zone (§12.4).
+ */
+export function formatInstant(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kolkata',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 }
 
 /** Today in IST, for the date input's default and max (§10.9). */

@@ -1,13 +1,16 @@
 /**
  * API routes — SRS §14.
  *
- * Phase 1 covers the subset the minimal dealer screen needs: dealers,
- * transactions, payments, voids. The rest (suggestions, audit, exports,
- * cross-dealer transactions, PATCH) arrives with Phase 2.
+ * Dealers, transactions, payments and voids. Reporting, exports and the audit
+ * view are in routes-reporting.ts; authentication is in auth.ts.
  *
- * ⚠ NOT YET GATED. §16.3 requires every ledger-mutating endpoint to sit behind
- * the session check, with no unauthenticated write path. The auth gate is
- * Phase 3 (§23) and MUST be in place before any real data is entered.
+ * Every route here is behind the session gate — index.ts mounts
+ * `requireSession` on `/api/*` ABOVE this router, so a route added to this file
+ * is gated by default and nothing has to be remembered. auth.test.ts sweeps
+ * Hono's own route table and fails if any route escapes it.
+ *
+ * ⚠ Still missing from §14: `PATCH /api/transactions/:id`, for editing the
+ * non-financial fields (notes, reference tag, item name) in place.
  */
 
 import { Hono } from 'hono';

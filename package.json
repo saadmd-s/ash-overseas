@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -21,9 +21,13 @@
     "db:migrate:local": "wrangler d1 migrations apply ledger-dev --local",
     "db:migrate:dev": "wrangler d1 migrations apply ledger-dev --remote",
     "db:migrate:prod": "wrangler d1 migrations apply ledger-prod --env production --remote",
-    "db:export": "wrangler d1 export ledger-prod --env production --remote --output backups/ledger-prod.sql",
+    "db:export": "node scripts/db-export.ts --env production --database ledger-prod",
+    "db:export:dev": "node scripts/db-export.ts --database ledger-dev",
+    "db:verify-restore": "node scripts/verify-restore.ts",
+    "auth:setup": "node scripts/set-credentials.ts",
     "deploy": "vite build && wrangler deploy",
-    "deploy:prod": "vite build && wrangler deploy --env production"
+    "deploy:prod": "node scripts/require-auth-secret.ts && vite build && wrangler deploy --env production",
+    "db:export:local": "node scripts/db-export.ts --local --database ledger-dev"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.2",
@@ -39,6 +43,7 @@
     "@cloudflare/workers-types": "^5.20260829.1",
     "@eslint/js": "^9.30.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.4.0",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
@@ -60,5 +65,8 @@
       "workerd",
       "@tailwindcss/oxide"
     ]
+  },
+  "engines": {
+    "node": ">=22.18.0"
   }
 }
