@@ -24,7 +24,7 @@ export default defineConfig({
       {
         test: {
           name: 'pure',
-          include: ['src/money/**/*.test.ts', 'src/ledger/**/*.test.ts'],
+          include: ['src/money/**/*.test.ts', 'src/ledger/**/*.test.ts', 'src/export/**/*.test.ts'],
           environment: 'node',
         },
       },

@@ -128,3 +128,23 @@ export const ledgerQuerySchema = z.object({
   mode: z.enum(['purchase', 'sale']).optional(),
   bankAccount: bankAccount.optional(),
 });
+
+/**
+ * Dealer edit — identity fields and the archive flag only.
+ *
+ * FR-D3: editing identity fields never alters any posted figure, which is why
+ * nothing monetary appears here. FR-A6 requires a void and re-entry for any
+ * change to a date, amount, quantity, rate, GST rate, discount, freight, dealer
+ * or mode — so those are absent by design, not by omission.
+ */
+export const patchDealerSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    contact: z.string().trim().nullish(),
+    address: z.string().trim().nullish(),
+    gstin: z.string().trim().nullish(),
+    stateCode: z.string().trim().nullish(),
+    type: z.enum(['supplier', 'buyer', 'both']).optional(),
+    isArchived: z.boolean().optional(),
+  })
+  .refine((o) => Object.keys(o).length > 0, { message: 'Nothing to change.' });

@@ -9,8 +9,10 @@ It is a faithful digital version of a working notebook — not accounting softwa
 It does not file taxes, generate legal invoices, or replace the tools used for
 statutory filing.
 
-> **Status:** specification and documentation only. No application code yet — no
-> `package.json`, no toolchain. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
+> **Status:** Phases 0–2 of [SRS §23](SRS.md) are complete — ledger engine,
+> posting layer, API, mobile-first interface, and all three exports. 146 tests
+> green. **Phase 3 (auth, security headers, verified backup restore, handover)
+> is next, and there is no auth gate yet.**
 
 ---
 

@@ -1,0 +1,14 @@
+{
+  "name": "ASH Overseas Ledger",
+  "short_name": "ASH Ledger",
+  "description": "Trading ledger — one balance per dealer.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f9fafb",
+  "theme_color": "#1f2937",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -50,6 +50,12 @@ export default tseslint.config(
   },
 
   {
+    // The service worker runs in a ServiceWorkerGlobalScope, not a window.
+    files: ['public/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
+
+  {
     files: ['src/client/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: reactHooks.configs.recommended.rules,

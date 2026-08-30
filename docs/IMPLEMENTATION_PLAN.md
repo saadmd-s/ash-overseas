@@ -31,7 +31,7 @@ what stops the engine being written to match whatever it happens to produce.
 
 ---
 
-## Phase 0 — Foundations
+## Phase 0 — Foundations ✅ COMPLETE
 
 **Goal:** the toolchain works, the money math is proven, and the acceptance tests
 exist and fail honestly.
@@ -88,7 +88,7 @@ The six §6 scenarios encoded as fixtures — **expected red**.
 
 ---
 
-## Phase 1 — Core Ledger
+## Phase 1 — Core Ledger ✅ COMPLETE
 
 **Goal:** the numbers are right, through the real database, atomically.
 
@@ -130,9 +130,19 @@ that the real interface is Phase 2.
 
 ---
 
-## Phase 2 — The Real Application
+## Phase 2 — The Real Application ✅ COMPLETE
 
 **Goal:** the owner can actually run the business on it, from a phone.
+
+> **Gate met**, with one caveat. A purchase with discount and freight on OD and
+> a sale with a round-off on Current can be entered, voided and exported, and
+> `src/worker/export.test.ts` asserts the exported figures reconcile **exactly**
+> with what the ledger endpoint reports — row by row, before and after a void.
+>
+> **Not verified: the visual layout at 360 px in a real browser.** Routes serve,
+> the CSS builds, and the layout is written mobile-first with 44 px targets, but
+> nobody has looked at it on a phone. Do that before trusting the gate as fully
+> closed.
 
 ### 2.1 Navigation and screens
 
@@ -164,6 +174,16 @@ Then the "All transactions" cross-dealer view.
 
 **All three exports** per §11 — dealer ledger, all transactions, dealer balances
 — in Excel and CSV, over a **shared row-builder** so the formats cannot drift.
+
+`src/export/build.ts` is pure and holds the single sanctioned `paise / 100`; the
+xlsx and csv writers both consume its `Sheet`. SheetJS is loaded lazily, so its
+330 kB never lands in the initial bundle.
+
+**SheetJS is installed from `cdn.sheetjs.com`, not npm.** The `xlsx` package on
+the npm registry is stale at 0.18.5 and carries open advisories that
+`pnpm audit --audit-level high` would flag; the CDN tarball is the vendor's own
+supported channel and is patched. CI therefore needs network access to that
+host.
 
 ### 2.6 Polish
 

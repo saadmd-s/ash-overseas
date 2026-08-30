@@ -12,7 +12,6 @@
 
 import { Hono } from 'hono';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { z } from 'zod';
 import * as schema from '../db/schema';
 import {
   createDealer,
@@ -28,25 +27,12 @@ import {
   createTransactionSchema,
   ledgerQuerySchema,
 } from './schemas';
+import { fail, flatten, idParam } from './http';
 import type { Env } from './index';
 
 export const api = new Hono<{ Bindings: Env }>();
 
-/** A stable machine-readable `code` plus a human message (§14). */
-function fail(code: string, message: string, fields?: Record<string, string>) {
-  return { error: { code, message, ...(fields ? { fields } : {}) } };
-}
-
-function flatten(error: z.ZodError): Record<string, string> {
-  const fields: Record<string, string> = {};
-  for (const issue of error.issues) {
-    const key = issue.path.join('.') || '_';
-    fields[key] ??= issue.message;
-  }
-  return fields;
-}
-
-const idParam = z.coerce.number().int().positive();
+// Shared with routes-reporting.ts so both surfaces answer identically.
 
 // ---------------------------------------------------------------------------
 // Dealers

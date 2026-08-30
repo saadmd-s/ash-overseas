@@ -118,3 +118,19 @@ export function parseRupeesToPaise(input: string): Paise | null {
 
   return total;
 }
+
+/**
+ * Indian digit grouping for the MoneyInput's live echo — `313830` → `3,13,830`.
+ *
+ * Operates on the digits the owner typed, never on a numeric money value: no
+ * arithmetic happens here, and nothing is rounded. `formatPaise` remains the
+ * only formatter for a *stored* amount (§10.8).
+ *
+ * Indian grouping is last-3 then 2s: 1,23,45,678.
+ */
+export function groupIndianDigits(digits: string): string {
+  if (digits.length <= 3) return digits;
+  const last3 = digits.slice(-3);
+  const rest = digits.slice(0, -3);
+  return `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${last3}`;
+}

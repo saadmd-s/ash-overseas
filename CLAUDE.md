@@ -11,10 +11,12 @@ all 23 sections plus Appendix A and Appendix B.
 
 ## Status
 
-**Phase 0 and Phase 1 complete (SRS §23).** The money module, pure ledger
-engine, posting layer, API routes and a minimal read-only dealer screen are in
-place. All six §6 scenarios pass at **both** the pure and the D1-integration
-level; the §15.3 atomicity test passes. **Phase 2 (the real application) is
+**Phases 0, 1 and 2 complete (SRS §23).** Money module, pure ledger engine,
+posting layer, full API, the real mobile-first interface (forms with
+`MoneyInput` and draft persistence, void dialog, filters, cross-dealer view),
+all three exports in Excel and CSV, and the PWA shell. 146 tests green: the six
+§6 scenarios at **both** the pure and D1-integration level, the §15.3 atomicity
+test, and the Phase 2 reconciliation gate. **Phase 3 (hardening and handoff) is
 next.**
 
 ⚠ **There is no auth gate yet** — it is Phase 3 (§16.1, §23). The Worker now has
