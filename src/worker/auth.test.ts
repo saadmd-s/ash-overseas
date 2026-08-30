@@ -14,6 +14,8 @@ import { env, SELF } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hashPassword } from '../auth/crypto';
 import app from './index';
+import { DUMMY_PASSWORD_RECORD } from './auth';
+import { PBKDF2_ITERATIONS, verifyPassword } from '../auth/crypto';
 
 /**
  * Every concrete /api route the Worker actually registers, read off Hono's own
@@ -490,5 +492,49 @@ describe('Production refuses to serve unprotected — §16.1', () => {
     armGate();
     await seedCredentials();
     expect((await req('/api/auth/me')).status).toBe(200);
+  });
+});
+
+describe('The wrong-username path costs the same as the wrong-password path', () => {
+  /*
+   * Short-circuiting on the username would answer a wrong username faster than
+   * a wrong password - by a whole PBKDF2 derivation - and hand an attacker the
+   * username oracle that the generic "Wrong username or password." message
+   * exists to deny. The login route defends against that by verifying against
+   * DUMMY_PASSWORD_RECORD when there is no matching credential.
+   *
+   * A wall-clock comparison would be flaky. What is asserted instead is the
+   * property the defence actually rests on: that the dummy record is well
+   * formed, so verifyPassword DERIVES rather than bailing out at the format
+   * check in microseconds.
+   */
+  it('uses a dummy record that is well formed enough to cost a real derivation', async () => {
+    const [scheme, iterations, salt, hash] = DUMMY_PASSWORD_RECORD.split('$');
+
+    expect(scheme).toBe('pbkdf2');
+    expect(Number(iterations)).toBe(PBKDF2_ITERATIONS);
+    // Both must decode, or `deriveBits` throws and verifyPassword returns early.
+    expect(() => atob(salt)).not.toThrow();
+    expect(() => atob(hash)).not.toThrow();
+    expect(atob(salt).length).toBe(16);
+    expect(atob(hash).length).toBe(32);
+  });
+
+  it('accepts no password at all', async () => {
+    for (const guess of ['', 'password', PASSWORD, 'a'.repeat(200)]) {
+      expect(await verifyPassword(guess, DUMMY_PASSWORD_RECORD)).toBe(false);
+    }
+  });
+
+  it('answers a login against an unconfigured database identically, and slowly', async () => {
+    armGate();
+    // No credentials row seeded — the branch that has no real hash to verify.
+    const started = Date.now();
+    const res = await postJson('/api/auth/login', { username: 'owner', password: 'guess' });
+    const elapsed = Date.now() - started;
+
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('BAD_CREDENTIALS');
+    expect(elapsed).toBeGreaterThanOrEqual(450);
   });
 });

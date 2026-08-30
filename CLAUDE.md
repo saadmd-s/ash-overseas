@@ -18,9 +18,14 @@ in Excel and CSV, the PWA shell — and now the single-user login gate, the six
 §16.2 security headers, CSRF checks, in-app credential change, the read-only
 audit view, and a **verified** backup restore.
 
-**196 tests green**: the six §6 scenarios at **both** the pure and
+**SRS §14 is now complete.** `PATCH /api/transactions/:id` edits the three
+non-financial fields in place (notes, reference tag, item name) behind an entry
+detail sheet, and the `mode` ledger filter — accepted by the query schema and
+silently ignored since Phase 2 — actually filters.
+
+**212 tests green**: the six §6 scenarios at **both** the pure and
 D1-integration level, the §15.3 atomicity test, the Phase 2 reconciliation gate,
-and the Phase 3 auth gate.
+the Phase 3 auth gate, and the edit/filter/cursor suite.
 
 **Operational work lives in [docs/RUNBOOK.md](docs/RUNBOOK.md)** — deploy,
 backup, restore, password recovery, correcting a wrong entry.
@@ -31,11 +36,15 @@ backup, restore, password recovery, correcting a wrong entry.
   D1 databases are unmade, `wrangler.jsonc` still holds
   `REPLACE_WITH_LEDGER_*_ID`, and the production restore drill (NFR-B3) has not
   been run. The drill _is_ verified locally. See RUNBOOK §First-time provisioning.
-- **`PATCH /api/transactions/:id` is missing.** §14 lists it and rule 5 below
-  depends on it: non-financial fields (notes, reference tag, item name) are
-  supposed to be editable in place. Today the only correction path is void and
-  re-enter, which is heavier than the spec intends for a typo.
-- **The layout has never been seen at 360 px in a real browser.**
+- **The layout has never been seen at 360 px in a real browser**, and no export
+  download has been watched to actually save under the CSP.
+- **`app.onError` is not covered by a test.** No route in the application can be
+  made to throw on demand, and adding a fault-injection route to production code
+  to prove a defensive handler works is a bad trade. What _is_ verified is the
+  part that matters: the six security headers survive a 500.
+- **Four §22 owner questions are still open** — bank tag required on cash
+  payments?; dealer history default newest- or oldest-first?; should the
+  all-transactions export include payments?; business name, logo, accent colour.
 
 ## Documentation set
 
@@ -103,7 +112,8 @@ One money-math module owns every arithmetic operation on paise. No ad-hoc `*`,
 Corrections are **voids**: flag the source `is_voided`, post an equal and
 opposite reversing entry linked to the original, replay, write an audit row.
 Non-financial fields (notes, reference tag, item name spelling) may be edited
-in place and are audited. Any change to date, amount, quantity, rate, GST rate,
+in place and are audited — `PATCH /api/transactions/:id`, whose request schema
+is `.strict()` so a financial field is a 400 and never a silent no-op. Any change to date, amount, quantity, rate, GST rate,
 discount, freight, dealer, or mode requires void + re-entry.
 
 ### 6. Every multi-row write is one `db.batch([...])`

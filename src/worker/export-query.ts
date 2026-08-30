@@ -74,6 +74,51 @@ async function linesByTransaction(
 
 // ---------------------------------------------------------------------------
 
+/** The shape `modeMatcher` needs off a ledger row — a subset of the full row. */
+export interface ModeFilterableEntry {
+  id: number;
+  sourceType: 'transaction' | 'payment' | 'opening' | 'reversal';
+  sourceId: number | null;
+  reversesEntryId: number | null;
+}
+
+/**
+ * Which ledger rows a `mode=purchase|sale` filter keeps (SRS 14, APP_FLOW 7).
+ *
+ * A mode belongs to a TRANSACTION, not to a ledger row, so it has to be
+ * resolved through the source record - and for a reversal, through the entry it
+ * reverses. A reversal row's own `source_id` names a row in either the
+ * transactions or the payments table and nothing on the row says which; the two
+ * tables autoincrement independently, so transaction 5 and payment 5 both
+ * exist and the id alone is ambiguous. `reverses_entry_id` is not ambiguous.
+ *
+ * A payment and an opening position are neither a purchase nor a sale, so a
+ * mode filter excludes them.
+ *
+ * This lives in one place because the dealer screen and the dealer export must
+ * answer the same question the same way; two copies of this rule would drift
+ * and the spreadsheet would disagree with the screen it was exported from.
+ */
+export function modeMatcher(
+  entries: ModeFilterableEntry[],
+  txModeById: Map<number, 'purchase' | 'sale'>,
+  mode: 'purchase' | 'sale',
+): (entry: ModeFilterableEntry) => boolean {
+  const byId = new Map(entries.map((e) => [e.id, e]));
+
+  return (entry) => {
+    const origin =
+      entry.sourceType === 'reversal' && entry.reversesEntryId !== null
+        ? (byId.get(entry.reversesEntryId) ?? null)
+        : entry;
+
+    if (!origin || origin.sourceType !== 'transaction' || origin.sourceId === null) return false;
+    return txModeById.get(origin.sourceId) === mode;
+  };
+}
+
+// ---------------------------------------------------------------------------
+
 /** Every ledger row for a dealer, enriched with its source record. */
 export async function dealerLedgerRows(
   db: Db,
@@ -102,6 +147,14 @@ export async function dealerLedgerRows(
   const txById = new Map(transactions.map((t) => [t.id, t]));
   const payById = new Map(payments.map((p) => [p.id, p]));
 
+  // One definition of the mode filter, shared with the dealer screen. It also
+  // now covers REVERSAL rows, which the old inline check let through unfiltered
+  // - so a `mode=sale` export could carry the reversal of a purchase.
+  const mode = filters.mode === 'purchase' || filters.mode === 'sale' ? filters.mode : null;
+  const matchesMode = mode
+    ? modeMatcher(entries, new Map(transactions.map((t) => [t.id, t.mode])), mode)
+    : null;
+
   const rows: LedgerExportRow[] = [];
 
   for (const entry of entries) {
@@ -112,6 +165,7 @@ export async function dealerLedgerRows(
     if (filters.to && entry.entryDate > filters.to) continue;
     if (filters.bankAccount && entry.bankAccount !== filters.bankAccount) continue;
     if (filters.type && entry.sourceType !== filters.type) continue;
+    if (matchesMode && !matchesMode(entry)) continue;
 
     const base = {
       entryDate: entry.entryDate,
@@ -125,7 +179,6 @@ export async function dealerLedgerRows(
     if (entry.sourceType === 'transaction' && entry.sourceId !== null) {
       const tx = txById.get(entry.sourceId);
       if (!tx) continue;
-      if (filters.mode && tx.mode !== filters.mode) continue;
 
       const summary = lineSummary(lines.get(tx.id) ?? []);
       rows.push({
@@ -150,7 +203,6 @@ export async function dealerLedgerRows(
     if (entry.sourceType === 'payment' && entry.sourceId !== null) {
       const pay = payById.get(entry.sourceId);
       if (!pay) continue;
-      if (filters.mode) continue; // a mode filter excludes payments entirely
 
       rows.push({
         ...base,

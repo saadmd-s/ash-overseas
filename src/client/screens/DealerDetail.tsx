@@ -25,6 +25,7 @@ import {
   Money,
   VoidDialog,
 } from '../components';
+import { EntryEditDialog } from './EntryEdit';
 
 export function DealerDetail({
   dealer,
@@ -45,6 +46,7 @@ export function DealerDetail({
   const [newestFirst, setNewestFirst] = useState(true);
   const [voiding, setVoiding] = useState<LedgerEntry | null>(null);
   const [voidBusy, setVoidBusy] = useState(false);
+  const [opened, setOpened] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -130,6 +132,23 @@ export function DealerDetail({
               <option value="">All</option>
               <option value="transaction">Goods</option>
               <option value="payment">Money</option>
+            </select>
+          </label>
+          <label className="text-sm">
+            Goods
+            <select
+              className="field"
+              value={filters.mode ?? ''}
+              onChange={(e) =>
+                setFilters((f) => ({
+                  ...f,
+                  mode: (e.target.value || undefined) as Filters['mode'],
+                }))
+              }
+            >
+              <option value="">All</option>
+              <option value="purchase">Purchases</option>
+              <option value="sale">Sales</option>
             </select>
           </label>
           <label className="text-sm">
@@ -230,15 +249,26 @@ export function DealerDetail({
                 {isVoided && (
                   <p className="mt-1 text-xs font-medium text-[var(--color-payable)]">VOIDED</p>
                 )}
-                {canVoid && (
-                  <button
-                    type="button"
-                    className="btn mt-2 text-sm"
-                    onClick={() => setVoiding(entry)}
-                  >
-                    Void
-                  </button>
-                )}
+                <div className="mt-2 flex gap-2">
+                  {/* The entry detail sheet (APP_FLOW 6.1) — the figures, this
+                      record's own history, and the three fields that may be
+                      corrected without a void. Offered on voided rows too: a
+                      voided entry is kept forever and is still worth reading. */}
+                  {entry.sourceType === 'transaction' && entry.sourceId !== null && (
+                    <button
+                      type="button"
+                      className="btn text-sm"
+                      onClick={() => setOpened(entry.sourceId)}
+                    >
+                      Details
+                    </button>
+                  )}
+                  {canVoid && (
+                    <button type="button" className="btn text-sm" onClick={() => setVoiding(entry)}>
+                      Void
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}
@@ -257,6 +287,20 @@ export function DealerDetail({
           + Payment
         </button>
       </div>
+
+      {opened !== null && (
+        <EntryEditDialog
+          transactionId={opened}
+          onSaved={(message) => {
+            setOpened(null);
+            toast(message);
+            // The reference tag is the ledger row's display text, so the
+            // history has to be re-read. No balance moved.
+            load();
+          }}
+          onCancel={() => setOpened(null)}
+        />
+      )}
 
       {voiding && (
         <VoidDialog

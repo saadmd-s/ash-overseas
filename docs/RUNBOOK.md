@@ -67,7 +67,7 @@ and local-only — see [Things that will bite you](#things-that-will-bite-you).
 | `pnpm auth:setup`        | Write the login ([Logins](#logins-and-passwords))       |
 | `pnpm deploy:prod`       | Deploy to production                                    |
 
-The suite should read **196 passing**. If a number here has drifted, the count
+The suite should read **212 passing**. If a number here has drifted, the count
 in [README](../README.md) and [CLAUDE.md](../CLAUDE.md) is stale, not wrong —
 check what changed.
 
@@ -254,7 +254,14 @@ visible, and both appear in exports, flagged.
 - Wrong **amount, date, quantity, rate, GST rate, discount, freight, dealer or
   mode** → void it and re-enter. There is no edit path for these, on purpose.
 - Wrong **note, reference tag, or item-name spelling** → these are non-financial
-  and may be edited in place; the edit is audited.
+  and may be edited in place; the edit is audited. Open the entry from the dealer
+  screen or the all-transactions list — **Details** — and change the wording
+  there. The figures on that sheet are text, not fields: there is deliberately
+  nothing to type an amount into.
+
+  Behind it is `PATCH /api/transactions/:id`, whose request schema is `.strict()`.
+  Sending it a financial field is a `400`, never a quietly ignored key — being
+  told an amount changed when it did not is worse than being refused.
 
 `recomputeLedger(dealerId)` replays every non-voided entry from zero (or from the
 opening entry) and rewrites the running balances. It runs automatically after
@@ -298,7 +305,7 @@ migration — if the release included one, restore the data separately.
 
 ## Checks that still need a real browser
 
-Everything above has been verified by running it. These three cannot be, from a
+Everything above has been verified by running it. These four cannot be, from a
 terminal, and should be walked through once before the owner starts entering real
 data:
 
@@ -313,6 +320,10 @@ data:
 3. **The PWA installs and the shell loads offline**, while `/api` still refuses
    to serve anything from cache. A stale balance is a dangerous balance, which is
    why `public/sw.js` returns early for every `/api` path.
+4. **The entry detail sheet at 360 px.** It is the tallest thing in the
+   application — figures, one field per line item, notes, and the record's own
+   history — and it scrolls inside a `max-h-[90vh]` dialog. Its behaviour is
+   covered by tests; its shape on a phone is not.
 
 ---
 

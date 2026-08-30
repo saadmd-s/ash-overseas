@@ -36,6 +36,28 @@ export const SESSION_COOKIE = 'ash_session';
 /** The deliberate delay before a wrong login's 401 (§16.1). */
 const WRONG_PASSWORD_DELAY_MS = 500;
 
+/**
+ * A well-formed credential record that no password verifies against.
+ *
+ * Its only job is to cost the same PBKDF2 derivation as a real one. Without it,
+ * a wrong USERNAME short-circuits before any key derivation and answers
+ * measurably faster than a wrong PASSWORD, which hands an attacker a username
+ * oracle - the exact thing the generic "Wrong username or password." message
+ * exists to deny. The fixed delay hides nothing here, because the derivation
+ * cost is added ON TOP of it.
+ *
+ * The salt and hash are random bytes, not a derivation of anything, so there is
+ * no password this record could ever accept. It is not a secret.
+ *
+ * Exported so a test can assert it is still WELL-FORMED. That is the whole
+ * mechanism: `verifyPassword` rejects a malformed record on sight, in
+ * microseconds, without deriving anything - so replacing this with a
+ * placeholder like 'x' would quietly restore the exact timing oracle it exists
+ * to close, with every other test still green.
+ */
+export const DUMMY_PASSWORD_RECORD =
+  'pbkdf2$100000$IfidG3BQi8r8y+lvy7f7oQ==$cZTRf2N8JPN46HdzPC3et2lvEjH4DI6fyWOgvYXp2/Q=';
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---------------------------------------------------------------------------
@@ -267,14 +289,16 @@ publicAuth.post('/auth/login', async (c) => {
   const db = makeDb(c.env.DB);
   const creds = await loadCredentials(db);
 
-  // The same generic message and the same delay whether the username was wrong,
-  // the password was wrong, or no credentials exist at all. A distinguishable
-  // response would let an attacker confirm the username before starting on the
-  // password.
-  const ok =
-    creds !== null &&
-    creds.username === parsed.data.username &&
-    (await verifyPassword(parsed.data.password, creds.passwordHash));
+  // The same generic message, the same delay, AND the same work whether the
+  // username was wrong, the password was wrong, or no credentials exist at all.
+  // The derivation runs unconditionally - short-circuiting on the username
+  // would make a wrong username answer faster than a wrong password and let an
+  // attacker confirm the username before starting on the password.
+  const passwordOk = await verifyPassword(
+    parsed.data.password,
+    creds?.passwordHash ?? DUMMY_PASSWORD_RECORD,
+  );
+  const ok = creds !== null && creds.username === parsed.data.username && passwordOk;
 
   if (!ok || !creds) {
     await auditAuth(db, 'login', { result: 'failed' });

@@ -203,8 +203,8 @@ Loading, empty, and error states; toasts; accessibility pass; PWA install
 maintainable by someone else.
 
 **Delivered.** Gate in `src/worker/auth.ts`, crypto in `src/auth/crypto.ts`,
-mounted in `src/worker/index.ts` (the middleware order is the design). 30 auth
-tests; 196 in total. Operations are documented in
+mounted in `src/worker/index.ts` (the middleware order is the design). 33 auth
+tests; 212 in total. Operations are documented in
 [RUNBOOK.md](RUNBOOK.md), which is the §19.4 handover deliverable.
 
 **Two findings worth carrying forward**, both caught by doing rather than
@@ -223,8 +223,72 @@ planning:
 exist yet: create the two D1 databases, paste their IDs into `wrangler.jsonc`,
 set `AUTH_SECRET`, deploy, run `pnpm auth:setup --env production`, and run the
 restore drill against production. RUNBOOK §First-time provisioning is the script.
-Also outstanding and account-independent: `PATCH /api/transactions/:id` (§14),
-and looking at the interface at 360 px.
+Also outstanding and account-independent: looking at the interface at 360 px,
+and the four §22 owner questions.
+
+---
+
+## Phase 3.1 — Closing §14, and a review pass
+
+Not a phase in the SRS. This is the work that was left flagged rather than done
+at the end of Phase 3, plus what a read of the whole surface turned up.
+
+**`PATCH /api/transactions/:id` (§14, FR-A6) — the last missing route.** Notes,
+reference tag and item-name spelling, edited in place; everything else still
+needs a void and a re-entry. Three decisions worth recording:
+
+- The request schema is **`.strict()`**. Zod's default is to strip an unknown
+  key, so a body carrying `grandTotalPaise` would have been answered `200` and
+  silently ignored — the caller told the amount changed when it had not. On a
+  ledger that is a worse answer than an error.
+- Line items are addressed by **primary key**, and every id is checked to belong
+  to the transaction being edited. `line_no` would have worked too, but only
+  under the assumption that it is unique per transaction, which nothing in the
+  schema enforces.
+- The edit also rewrites the **ledger row's display text** when the reference
+  tag changes. It is display text, not a figure; leaving it stale would show the
+  old tag in the dealer's history and the new one on the entry itself, which on
+  a ledger reads as corruption.
+
+The interface half is `src/client/screens/EntryEdit.tsx` — the entry detail
+sheet of APP_FLOW §6.1. Every figure in it is **text, never an input**: APP_FLOW
+requires the constraint to be enforced in the interface, and a disabled amount
+box still tells the owner that an amount is the kind of thing you edit here.
+
+**Five findings from the review pass**, all fixed:
+
+1. **The `mode` ledger filter was accepted and ignored.** §14 and APP_FLOW §7
+   both list it; `ledgerQuerySchema` parsed it; nothing ever applied it. A
+   mode-filtered request came back unfiltered, with `shownCount === totalCount`
+   — a filter reporting that it had done nothing while looking as though it had
+   worked. This is the product's most easily-broken promise (P3). The same
+   matcher now serves the dealer screen and the dealer export, so the two cannot
+   disagree; it also fixed a reversal of a purchase surviving a `mode=sale`
+   export.
+2. **Page cursors went through a bare `Number()`.** `Number('abc')` is NaN,
+   SQLite binds NaN as NULL, and `id < NULL` is NULL — so `?cursor=abc` answered
+   `200` with an empty page over a database full of rows. Now a 400.
+3. **A wrong username was measurably cheaper than a wrong password**, because
+   the username check short-circuited before any key derivation — a username
+   oracle sitting behind a deliberately generic error message. Login now always
+   derives, against a dummy record when there is no match. The test asserts the
+   dummy record is still _well formed_, because a malformed one would be
+   rejected on sight and quietly reopen the hole.
+4. **Export filters were passed through unvalidated.** Every export sheet prints
+   its own filter line, so `?mode=garbage` produced a workbook headed
+   `Mode: garbage` over rows that had never been filtered by mode — a
+   spreadsheet misdescribing its own contents, which §11 is explicit about.
+5. **`recomputeLedger` paired rows with recomputed balances by position**, while
+   `replay` re-sorts internally — correct only while the SQL `ORDER BY` and
+   `compareEntryOrder` stay identical. Both sides now sort through the same
+   function. The failure mode was silent: every balance written to the wrong
+   entry, no error anywhere.
+
+Also added: an `app.onError` that answers `/api` faults with the §14 error shape
+instead of `text/plain`, and logs neither the request body nor the thrown text
+to the client. Its message deliberately does **not** say "nothing was changed" —
+a throw can land after a batch has committed, and that claim would invite a
+duplicate entry.
 
 ### 3.1 Authentication (§16.1)
 

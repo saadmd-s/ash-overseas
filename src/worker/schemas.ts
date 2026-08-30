@@ -148,3 +148,75 @@ export const patchDealerSchema = z
     isArchived: z.boolean().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'Nothing to change.' });
+
+/**
+ * Transaction edit — SRS §14, FR-A6.
+ *
+ * The three fields §14 names, and nothing else: notes, reference tag, and the
+ * spelling of an item name. Not one of them can move a figure, which is the
+ * whole reason they are editable in place while everything else needs a void.
+ *
+ * `.strict()` is deliberate. Zod's default is to STRIP an unknown key, so a
+ * body carrying `grandTotalPaise` or `entryDate` would be silently accepted and
+ * silently ignored — the caller would be told "ok" and reasonably believe the
+ * amount had changed. On a ledger that is the worst possible answer. Strict
+ * turns it into a 400 that names the field.
+ */
+export const patchTransactionSchema = z
+  .object({
+    notes: z.string().trim().nullish(),
+    referenceTag: z.string().trim().nullish(),
+    /** Item-name corrections, addressed by line id (from `GET /transactions/:id`). */
+    lines: z
+      .array(
+        z
+          .object({
+            id: z.number().int().positive(),
+            itemName: z.string().trim().nullish(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict()
+  .refine((o) => Object.keys(o).length > 0, { message: 'Nothing to change.' });
+
+/**
+ * A pagination cursor — the last id of the previous page.
+ *
+ * Validated rather than passed through `Number()`. `Number('abc')` is NaN,
+ * SQLite binds NaN as NULL, and `id < NULL` is NULL — so a garbled cursor
+ * returned an empty page and the screen said "no transactions" about a database
+ * full of them. Silently showing nothing is the one failure mode this
+ * application must not have.
+ */
+export const cursorParam = z.coerce.number().int().positive();
+
+/**
+ * Export filters — SRS §11.
+ *
+ * Validated for the same reason the page cursor is. Every export sheet prints
+ * its own filter line ("Filters applied — Mode: purchase"), so an unrecognised
+ * value used to produce a workbook headed `Mode: garbage` over rows that had
+ * not been filtered by mode at all. A spreadsheet that misdescribes its own
+ * contents is worse than one that refuses to be made.
+ *
+ * NOT `.strict()`: the export URLs legitimately carry `dealerId`,
+ * `includeArchived` and `format` alongside these, and Zod strips them.
+ */
+export const exportFilterSchema = z.object({
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  // The same two the dealer screen offers, so a filter that works on screen
+  // works in the export and nothing else is silently accepted.
+  type: z.enum(['transaction', 'payment']).optional(),
+  mode: z.enum(['purchase', 'sale']).optional(),
+  bankAccount: bankAccount.optional(),
+  dealerType: z.enum(['supplier', 'buyer', 'both']).optional(),
+});

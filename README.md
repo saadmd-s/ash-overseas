@@ -9,10 +9,12 @@ It is a faithful digital version of a working notebook — not accounting softwa
 It does not file taxes, generate legal invoices, or replace the tools used for
 statutory filing.
 
-> **Status:** Phases 0-3 of [SRS §23](SRS.md) are complete. Ledger engine,
-> posting layer, API, mobile-first interface, all three exports, and now the
-> single-user login gate, the six security headers, the read-only audit view,
-> and a **verified** backup restore. **196 tests green.**
+> **Status:** Phases 0-3 of [SRS §23](SRS.md) are complete, and the §14 API
+> surface is now complete with it. Ledger engine, posting layer, API,
+> mobile-first interface, all three exports, the single-user login gate, the six
+> security headers, the read-only audit view, a **verified** backup restore, and
+> the entry detail sheet that corrects a note or a misspelt item without
+> touching a figure. **212 tests green.**
 >
 > Not yet done: the Cloudflare account does not exist, so nothing is deployed and
 > the production restore drill has not been run. See

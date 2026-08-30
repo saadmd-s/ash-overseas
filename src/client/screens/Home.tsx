@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, formatDate, RequestFailed, toQuery, type Dealer, type DealerType } from '../lib';
 import { Money } from '../components';
-import { BalanceInline, Empty, ErrorState, ExportMenu, Field, Loading } from '../components';
+import { BalanceInline, Empty, ErrorState, ExportMenu, Field, Loading, Toast } from '../components';
+import { EntryEditDialog } from './EntryEdit';
 
 // ---------------------------------------------------------------------------
 
@@ -167,6 +168,8 @@ export function AllTransactions() {
     from?: string;
     to?: string;
   }>({});
+  const [opened, setOpened] = useState<number | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   const query = toQuery(filters);
 
@@ -254,9 +257,31 @@ export function AllTransactions() {
                 </div>
                 <Money paise={t.grandTotalPaise} />
               </div>
+              {/* The entry detail sheet, reachable from here too — a wrong item
+                  name is usually spotted while scanning across dealers, not
+                  while looking at one. */}
+              <button type="button" className="btn mt-2 text-sm" onClick={() => setOpened(t.id)}>
+                Details
+              </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {/* The same self-dismissing toast the rest of the application uses, rather
+          than a status line that would sit there stale. */}
+      {note && <Toast message={note} onDone={() => setNote(null)} />}
+
+      {opened !== null && (
+        <EntryEditDialog
+          transactionId={opened}
+          onSaved={(message) => {
+            setOpened(null);
+            setNote(message);
+            load();
+          }}
+          onCancel={() => setOpened(null)}
+        />
       )}
     </div>
   );

@@ -15,7 +15,7 @@ import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { currentBalance, makeDb } from '../posting/post';
 import { balanceRows, dealerLedgerRows, transactionRows } from './export-query';
-import { patchDealerSchema } from './schemas';
+import { cursorParam, exportFilterSchema, patchDealerSchema } from './schemas';
 import { fail, flatten, idParam } from './http';
 import type { ExportFilters } from '../export/types';
 import type { Env } from './index';
@@ -46,10 +46,25 @@ reporting.get('/transactions', async (c) => {
   if (bank === 'od' || bank === 'current') {
     conditions.push(eq(schema.transactions.bankAccount, bank));
   }
-  if (dealerId) conditions.push(eq(schema.transactions.dealerId, Number(dealerId)));
+  /*
+   * Both of these used to go through a bare `Number()`. `Number('abc')` is NaN,
+   * SQLite binds NaN as NULL, and `id < NULL` is NULL - so a garbled cursor
+   * came back as an EMPTY page with a 200, and the screen said "no
+   * transactions" over a database full of them. Silently showing nothing is the
+   * one answer this application must never give, so a bad value is now a 400.
+   */
+  if (dealerId !== null) {
+    const parsed = idParam.safeParse(dealerId);
+    if (!parsed.success) return c.json(fail('VALIDATION_FAILED', 'Invalid dealer.'), 400);
+    conditions.push(eq(schema.transactions.dealerId, parsed.data));
+  }
   // The cursor is the last id of the previous page. Newest first, so the next
   // page continues below it.
-  if (cursor) conditions.push(sql`${schema.transactions.id} < ${Number(cursor)}`);
+  if (cursor !== null) {
+    const parsed = cursorParam.safeParse(cursor);
+    if (!parsed.success) return c.json(fail('VALIDATION_FAILED', 'Invalid page cursor.'), 400);
+    conditions.push(sql`${schema.transactions.id} < ${parsed.data}`);
+  }
 
   const rows = await db
     .select({ tx: schema.transactions, dealerName: schema.dealers.name })
@@ -165,18 +180,19 @@ reporting.get('/suggestions', async (c) => {
 // Exports — SRS §11
 // ---------------------------------------------------------------------------
 
-function filtersFrom(url: string): ExportFilters {
-  const q = new URL(url).searchParams;
-  const pick = (k: string) => q.get(k) ?? undefined;
-  return {
-    from: pick('from'),
-    to: pick('to'),
-    type: pick('type'),
-    mode: pick('mode'),
-    bankAccount: pick('bankAccount'),
-    dealerType: pick('dealerType'),
-  };
+/**
+ * The active filters, validated.
+ *
+ * Returns `null` for an unrecognised value rather than passing it through: each
+ * export sheet prints its own filter line, so a value the query layer does not
+ * understand would head the workbook with a filter that was never applied.
+ */
+function filtersFrom(url: string): ExportFilters | null {
+  const parsed = exportFilterSchema.safeParse(Object.fromEntries(new URL(url).searchParams));
+  return parsed.success ? parsed.data : null;
 }
+
+const badFilters = () => fail('VALIDATION_FAILED', 'One of those filters is not recognised.');
 
 reporting.get('/export/dealer/:id', async (c) => {
   const id = idParam.safeParse(c.req.param('id'));
@@ -187,6 +203,8 @@ reporting.get('/export/dealer/:id', async (c) => {
   if (!dealer[0]) return c.json(fail('NOT_FOUND', 'No such dealer.'), 404);
 
   const filters = filtersFrom(c.req.url);
+  if (!filters) return c.json(badFilters(), 400);
+
   return c.json({
     kind: 'dealer-ledger',
     dealerName: dealer[0].name,
@@ -200,23 +218,33 @@ reporting.get('/export/dealer/:id', async (c) => {
 reporting.get('/export/transactions', async (c) => {
   const db = makeDb(c.env.DB);
   const filters = filtersFrom(c.req.url);
+  if (!filters) return c.json(badFilters(), 400);
+
   const dealerId = new URL(c.req.url).searchParams.get('dealerId');
+
+  const scoped = dealerId === null ? null : idParam.safeParse(dealerId);
+  if (scoped && !scoped.success) {
+    return c.json(fail('VALIDATION_FAILED', 'Invalid dealer.'), 400);
+  }
 
   return c.json({
     kind: 'transactions',
     filters,
     rows: await transactionRows(db, {
       ...filters,
-      ...(dealerId ? { dealerId: Number(dealerId) } : {}),
+      ...(scoped?.success ? { dealerId: scoped.data } : {}),
     }),
   });
 });
 
 reporting.get('/export/balances', async (c) => {
   const db = makeDb(c.env.DB);
+  const filters = filtersFrom(c.req.url);
+  if (!filters) return c.json(badFilters(), 400);
+
   return c.json({
     kind: 'balances',
-    filters: filtersFrom(c.req.url),
+    filters,
     rows: await balanceRows(db, { includeArchived: c.req.query('includeArchived') === 'true' }),
   });
 });
@@ -236,12 +264,18 @@ reporting.get('/audit', async (c) => {
   const db = makeDb(c.env.DB);
   const cursor = c.req.query('cursor');
 
+  // Validated, not coerced - see the note on the transactions cursor above.
+  const after = cursor === undefined ? null : cursorParam.safeParse(cursor);
+  if (after && !after.success) {
+    return c.json(fail('VALIDATION_FAILED', 'Invalid page cursor.'), 400);
+  }
+
   const rows = await db
     .select()
     .from(schema.auditLog)
     // Ordered by id, not by `at`: several rows written inside one db.batch share
     // a timestamp to the second, and only the id separates them reliably.
-    .where(cursor ? sql`${schema.auditLog.id} < ${Number(cursor)}` : undefined)
+    .where(after?.success ? sql`${schema.auditLog.id} < ${after.data}` : undefined)
     .orderBy(desc(schema.auditLog.id))
     .limit(PAGE_SIZE + 1);
 

@@ -7,7 +7,12 @@
 
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { replay, verifyRunningBalances, type ReplayableEntry } from '../ledger/engine';
+import {
+  compareEntryOrder,
+  replay,
+  verifyRunningBalances,
+  type ReplayableEntry,
+} from '../ledger/engine';
 import type { BatchItem, Db } from './db';
 import type { Paise } from '../money';
 
@@ -60,7 +65,19 @@ function asReplayable(rows: Awaited<ReturnType<typeof replayableEntries>>): Repl
  * nothing, and an empty batch is skipped entirely.
  */
 export async function recomputeLedger(db: Db, dealerId: number): Promise<{ updated: number }> {
-  const rows = await replayableEntries(db, dealerId);
+  /*
+   * Sorted here with the engine's OWN comparator, even though the query
+   * already orders by (entry_date, id).
+   *
+   * The loop below pairs `rows[i]` with `recomputed[i]` by position, and
+   * `replay` re-sorts internally — so the two agree only for as long as the SQL
+   * ORDER BY and `compareEntryOrder` stay identical. If they ever diverged, this
+   * would write each recomputed balance onto the WRONG entry: no error, no
+   * failing insert, just silently corrupted running balances across a dealer's
+   * whole history. Sorting both sides through the same function removes the
+   * coupling rather than documenting it.
+   */
+  const rows = (await replayableEntries(db, dealerId)).sort(compareEntryOrder);
   if (rows.length === 0) return { updated: 0 };
 
   const recomputed = replay(asReplayable(rows));

@@ -98,4 +98,50 @@ app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND', message: 'No such 
  */
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 
+/**
+ * Uncaught errors — §14 and §16.3.
+ *
+ * Hono's default handler answers `text/plain` "Internal Server Error" and logs
+ * the whole stack. Two things are wrong with that here:
+ *
+ *   - §14: every error response carries a stable machine-readable `code`. A
+ *     plain-text body makes the client's `res.json()` fall through to its
+ *     generic "something went wrong", so a real server fault is indistinguishable
+ *     from a dropped connection — and on a ledger, knowing which one happened
+ *     decides whether the owner re-enters the amount or not.
+ *   - §16.3: no money or dealer PII in logs. `observability` is on, so whatever
+ *     is logged leaves the Worker. The request body — where every amount and
+ *     dealer name lives — is never touched here, and the thrown text is never
+ *     returned to the client.
+ *
+ * The security headers are already on this response: `securityHeaders` is the
+ * outermost middleware and Hono applies the error handler beneath it.
+ */
+app.onError((err, c) => {
+  const { pathname } = new URL(c.req.url);
+  console.error(`${c.req.method} ${pathname} failed: ${err.name}: ${err.message}`);
+
+  if (pathname.startsWith('/api/')) {
+    return c.json(
+      {
+        error: {
+          code: 'INTERNAL',
+          // Deliberately fixed text. The thrown message may name a table, a
+          // column or a constraint, and none of that belongs in a response.
+          //
+          // It does NOT claim nothing was written. A throw can land after a
+          // batch has committed — the follow-up read in createTransaction is
+          // exactly such a place — and telling the owner "nothing was changed"
+          // would invite a duplicate entry. Sending them to look is the only
+          // honest answer.
+          message:
+            'Something went wrong on the server. Check whether the entry was saved before trying again.',
+        },
+      },
+      500,
+    );
+  }
+  return c.text('Something went wrong.', 500);
+});
+
 export default app;
