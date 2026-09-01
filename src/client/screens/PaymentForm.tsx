@@ -1,15 +1,15 @@
 /**
  * New payment — SRS §10.7.
  *
- * Direction is presented as two plain-language options, **never** as
- * debit/credit. Same money input and draft persistence rules as the
- * transaction form.
+ * Direction is presented as two plain-language options, NEVER as debit/credit.
+ * Same money input and draft persistence rules as the transaction form.
  */
 
 import { useEffect, useState } from 'react';
 import { formatPaise } from '../../money';
 import { api, draft, RequestFailed, todayIST, type BankAccount, type Dealer } from '../lib';
-import { Field, MoneyInput, Segmented } from '../components';
+import { MoneyInput } from '../components';
+import { Button, Card, Field, Labeled, Segmented, inputCls, panelCls } from '../ui';
 
 type Method = 'cash' | 'bank' | 'cheque' | 'upi';
 
@@ -91,52 +91,56 @@ export function PaymentForm({
 
   return (
     <form
-      className="p-3 pb-28"
+      className="mx-auto max-w-2xl space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (canSave) void save();
       }}
     >
-      <h1 className="mb-1 text-xl font-semibold">New payment</h1>
-      <p className="mb-4 text-sm text-[var(--color-muted)]">{dealer.name}</p>
+      <div>
+        <h1 className="text-headline-md text-primary">Add money</h1>
+        <p className="text-body-md text-on-surface-variant">{dealer.name}</p>
+      </div>
 
-      {/* Plain language, both ways. The words "debit" and "credit" never appear. */}
-      <Segmented
-        legend="Direction"
-        value={form.direction}
-        onChange={(direction) => update({ direction })}
-        options={[
-          { value: 'received', label: 'Received from dealer' },
-          { value: 'paid', label: 'Paid to dealer' },
-        ]}
-      />
+      <Card className="space-y-4">
+        {/* Plain language, both ways. The words "debit" and "credit" never
+            appear anywhere in the interface. */}
+        <Segmented
+          legend="Direction"
+          value={form.direction}
+          onChange={(direction) => update({ direction })}
+          options={[
+            { value: 'received', label: 'Received from dealer' },
+            { value: 'paid', label: 'Paid to dealer' },
+          ]}
+        />
 
-      <Field label="Date" error={errors.entryDate}>
-        {({ id }) => (
-          <input
-            id={id}
-            className="field"
-            type="date"
-            max={todayIST()}
-            value={form.entryDate}
-            onChange={(e) => update({ entryDate: e.target.value })}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Date" error={errors.entryDate}>
+            {({ id }) => (
+              <input
+                id={id}
+                className={inputCls}
+                type="date"
+                max={todayIST()}
+                value={form.entryDate}
+                onChange={(e) => update({ entryDate: e.target.value })}
+              />
+            )}
+          </Field>
+
+          <MoneyInput
+            label="Amount"
+            required
+            value={form.amountPaise}
+            onChange={(amountPaise) => update({ amountPaise })}
+            error={errors.amountPaise}
           />
-        )}
-      </Field>
+        </div>
 
-      <MoneyInput
-        label="Amount"
-        required
-        value={form.amountPaise}
-        onChange={(amountPaise) => update({ amountPaise })}
-        error={errors.amountPaise}
-      />
-
-      <Field label="Method" hint="Optional">
-        {({ id }) => (
+        <Labeled label="Method" hint="Optional">
           <select
-            id={id}
-            className="field"
+            className={inputCls}
             value={form.method}
             onChange={(e) => update({ method: e.target.value as Method | '' })}
           >
@@ -146,56 +150,62 @@ export function PaymentForm({
             <option value="cheque">Cheque</option>
             <option value="upi">UPI</option>
           </select>
-        )}
-      </Field>
+        </Labeled>
 
-      {form.method !== 'cash' && (
-        <Segmented
-          legend="Bank account"
-          value={form.bankAccount}
-          onChange={(bankAccount) => update({ bankAccount })}
-          options={[
-            { value: 'od', label: 'OD' },
-            { value: 'current', label: 'Current' },
-          ]}
-        />
-      )}
-
-      <Field label="Reference" hint="Cheque number, UTR">
-        {({ id }) => (
-          <input
-            id={id}
-            className="field"
-            value={form.reference}
-            onChange={(e) => update({ reference: e.target.value })}
+        {form.method !== 'cash' && (
+          <Segmented
+            legend="Bank account"
+            tone="neutral"
+            value={form.bankAccount}
+            onChange={(bankAccount) => update({ bankAccount })}
+            options={[
+              { value: 'od', label: 'OD' },
+              { value: 'current', label: 'Current' },
+            ]}
+            hint="A tag on your own account. It never splits the dealer’s balance."
           />
         )}
-      </Field>
 
-      <Field label="Notes">
-        {({ id }) => (
-          <textarea
-            id={id}
-            className="field"
-            rows={2}
-            value={form.notes}
-            onChange={(e) => update({ notes: e.target.value })}
-          />
-        )}
-      </Field>
+        <Field label="Reference" hint="Cheque number, UTR">
+          {({ id }) => (
+            <input
+              id={id}
+              className={inputCls}
+              value={form.reference}
+              onChange={(e) => update({ reference: e.target.value })}
+            />
+          )}
+        </Field>
+
+        <Field label="Notes">
+          {({ id }) => (
+            <textarea
+              id={id}
+              className={inputCls}
+              rows={2}
+              value={form.notes}
+              onChange={(e) => update({ notes: e.target.value })}
+            />
+          )}
+        </Field>
+      </Card>
 
       {failure && (
-        <p role="alert" className="mb-3 text-sm text-[var(--color-payable)]">
+        <p role="alert" className="text-body-md text-negative">
           {failure} Your entry has been kept.
         </p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 flex gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface)] p-3">
-        <button type="button" className="btn flex-1" onClick={onCancel}>
+      <div className={`${panelCls} flex gap-2`}>
+        <Button variant="outline" className="flex-1 py-2.5" onClick={onCancel}>
           Cancel
-        </button>
-        <button type="submit" className="btn btn-primary flex-1" disabled={!canSave}>
-          {saving ? 'Saving…' : 'Save'}
+        </Button>
+        <button
+          type="submit"
+          disabled={!canSave}
+          className="flex-1 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Save payment'}
         </button>
       </div>
     </form>

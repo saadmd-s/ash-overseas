@@ -1,16 +1,24 @@
 /**
- * New transaction — SRS §10.6.
+ * New transaction — SRS §10.6. The most complex screen, and the one where the
+ * design does the most work.
  *
  * Field order matches how the owner reads a docket. Totals recompute live on
  * every keystroke, through the SAME money module the server uses (FR-T4), so
  * there is no surprise on save. The server recomputes authoritatively and its
  * figures win.
+ *
+ * THE SINGLE MOST IMPORTANT USABILITY DECISION HERE is the "More options"
+ * disclosure. The common path is six fields; the complete path is fourteen.
+ * Hiding the eight rare ones behind one tap is what makes this form usable
+ * one-handed, standing in a yard.
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { formatPaise, lineAmount, transactionTotals } from '../../money';
 import { api, draft, RequestFailed, todayIST, type BankAccount, type Dealer } from '../lib';
-import { Field, MoneyInput, Money, Segmented } from '../components';
+import { Money, MoneyInput } from '../components';
+import { Button, Card, Field, Labeled, Segmented, inputCls, panelCls } from '../ui';
 
 interface LineDraft {
   itemName: string;
@@ -184,51 +192,78 @@ export function TransactionForm({
 
   return (
     <form
-      className="p-3 pb-28"
+      className="mx-auto max-w-2xl space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (canSave) void save();
       }}
     >
-      <h1 className="mb-1 text-xl font-semibold">
-        New {form.mode === 'sale' ? 'sale' : 'purchase'}
-      </h1>
-      <p className="mb-4 text-sm text-[var(--color-muted)]">{dealer.name}</p>
+      <div>
+        <h1 className="text-headline-md text-primary">
+          New {form.mode === 'sale' ? 'sale' : 'purchase'}
+        </h1>
+        <p className="text-body-md text-on-surface-variant">{dealer.name}</p>
+      </div>
 
-      <Segmented
-        legend="Mode"
-        value={form.mode}
-        onChange={(mode_) => update({ mode: mode_ })}
-        options={[
-          { value: 'purchase', label: 'Purchase' },
-          { value: 'sale', label: 'Sale' },
-        ]}
-      />
+      <Card className="space-y-4">
+        {/* Three short controls across, even at 360px, because they are short. */}
+        <div className="grid grid-cols-3 gap-3">
+          <Labeled label="Mode">
+            <select
+              className={inputCls}
+              value={form.mode}
+              onChange={(e) => update({ mode: e.target.value as 'purchase' | 'sale' })}
+            >
+              <option value="purchase">Purchase</option>
+              <option value="sale">Sale</option>
+            </select>
+          </Labeled>
 
-      <Field label="Date" error={errors.entryDate}>
-        {({ id, describedBy }) => (
-          <input
-            id={id}
-            aria-describedby={describedBy}
-            className="field"
-            type="date"
-            value={form.entryDate}
-            max={todayIST()}
-            onChange={(e) => update({ entryDate: e.target.value })}
-          />
-        )}
-      </Field>
+          <Field label="GST %" error={errors.gstRate}>
+            {({ id }) => (
+              <input
+                id={id}
+                className={`${inputCls} tnum`}
+                inputMode="decimal"
+                value={form.gstRate}
+                onChange={(e) => update({ gstRate: e.target.value })}
+              />
+            )}
+          </Field>
 
-      <Field label="Invoice No." hint="Optional">
-        {({ id }) => (
-          <input
-            id={id}
-            className="field"
-            value={form.invoiceNo}
-            onChange={(e) => update({ invoiceNo: e.target.value })}
-          />
-        )}
-      </Field>
+          <Field label="Date" error={errors.entryDate}>
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                className={inputCls}
+                type="date"
+                value={form.entryDate}
+                max={todayIST()}
+                onChange={(e) => update({ entryDate: e.target.value })}
+              />
+            )}
+          </Field>
+        </div>
+
+        {/*
+          The bank account tag renders in the NEUTRAL pair, never in the balance
+          semantics (§14, change 2). It records which of the business's own
+          accounts the money ran through. It never splits a balance, never
+          changes a posting rule, and must not look like it might.
+        */}
+        <Segmented
+          legend="Bank account"
+          tone="neutral"
+          value={form.bankAccount}
+          onChange={(bankAccount) => update({ bankAccount })}
+          options={[
+            { value: 'od', label: 'OD' },
+            { value: 'current', label: 'Current' },
+          ]}
+          hint="A tag on your own account. It never splits the dealer’s balance."
+        />
+      </Card>
 
       <datalist id="item-suggestions">
         {suggestions.item.map((s) => (
@@ -242,41 +277,52 @@ export function TransactionForm({
       </datalist>
 
       {form.lines.map((line, i) => (
-        <fieldset key={i} className="card mb-3 p-3">
-          <legend className="px-1 text-sm font-medium">Item {i + 1}</legend>
-
-          <Field label="Item" hint="Optional">
-            {({ id }) => (
-              <input
-                id={id}
-                className="field"
-                list="item-suggestions"
-                value={line.itemName}
-                onChange={(e) => updateLine(i, { itemName: e.target.value })}
-              />
+        <div key={i} className="space-y-3 rounded-lg border border-outline-variant p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-label-caps uppercase text-on-surface-variant">Line {i + 1}</span>
+            {form.lines.length > 1 && (
+              <button
+                type="button"
+                aria-label={`Remove line ${i + 1}`}
+                title={`Remove line ${i + 1}`}
+                className="grid size-8 place-items-center rounded-lg text-negative transition-colors hover:bg-negative-container"
+                onClick={() => setForm((f) => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))}
+              >
+                <Trash2 size={18} />
+              </button>
             )}
-          </Field>
+          </div>
 
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Field label="Quantity" error={errors[`lines.${i}.quantity`]}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Item" hint="Optional">
+              {({ id }) => (
+                <input
+                  id={id}
+                  className={inputCls}
+                  list="item-suggestions"
+                  value={line.itemName}
+                  onChange={(e) => updateLine(i, { itemName: e.target.value })}
+                />
+              )}
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Qty" error={errors[`lines.${i}.quantity`]}>
                 {({ id }) => (
                   <input
                     id={id}
-                    className="field tabular"
+                    className={`${inputCls} tnum`}
                     inputMode="decimal"
                     value={line.quantity}
                     onChange={(e) => updateLine(i, { quantity: e.target.value })}
                   />
                 )}
               </Field>
-            </div>
-            <div className="w-24">
               <Field label="Unit">
                 {({ id }) => (
                   <input
                     id={id}
-                    className="field"
+                    className={inputCls}
                     list="unit-suggestions"
                     placeholder="kg"
                     value={line.unit}
@@ -295,105 +341,101 @@ export function TransactionForm({
             error={errors[`lines.${i}.ratePaise`]}
           />
 
-          <p className="text-sm text-[var(--color-muted)]">
+          <p className="text-body-md text-on-surface-variant">
             Line amount: <Money paise={totals.linesPaise[i] ?? 0} />
           </p>
-
-          {form.lines.length > 1 && (
-            <button
-              type="button"
-              className="btn mt-2"
-              onClick={() => setForm((f) => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))}
-            >
-              Remove item {i + 1}
-            </button>
-          )}
-        </fieldset>
+        </div>
       ))}
 
-      {/* One line by default; adding more is an action, not a pre-expanded list. */}
-      <button
-        type="button"
-        className="btn mb-3 w-full"
+      {/* A bare text button, deliberately not a filled one: this is a secondary
+          action inside a form whose primary action is Save. */}
+      <Button
+        variant="text"
+        className="flex items-center gap-1"
         onClick={() => setForm((f) => ({ ...f, lines: [...f.lines, emptyLine()] }))}
       >
-        + Add another item
-      </button>
+        <Plus size={18} aria-hidden="true" />
+        Add line
+      </Button>
 
-      <Field label="GST %" error={errors.gstRate} hint="0–100">
+      <Field label="Reference tag" hint="Your own label — the one you actually search by.">
         {({ id }) => (
           <input
             id={id}
-            className="field tabular"
-            inputMode="decimal"
-            value={form.gstRate}
-            onChange={(e) => update({ gstRate: e.target.value })}
+            className={inputCls}
+            placeholder="ASH 39"
+            value={form.referenceTag}
+            onChange={(e) => update({ referenceTag: e.target.value })}
           />
         )}
       </Field>
 
-      <Segmented
-        legend="Bank account"
-        value={form.bankAccount}
-        onChange={(bankAccount) => update({ bankAccount })}
-        options={[
-          { value: 'od', label: 'OD' },
-          { value: 'current', label: 'Current' },
-        ]}
-      />
-
-      <button type="button" className="btn mb-3 w-full" onClick={() => setShowMore((v) => !v)}>
-        {showMore ? 'Hide' : 'More'} options
+      <button
+        type="button"
+        aria-expanded={showMore}
+        onClick={() => setShowMore((v) => !v)}
+        className="flex items-center gap-1 text-body-md font-medium text-primary"
+      >
+        <ChevronDown
+          size={18}
+          aria-hidden="true"
+          className={`transition-transform ${showMore ? 'rotate-180' : ''}`}
+        />
+        More options
       </button>
 
       {showMore && (
-        <div className="card mb-3 p-3">
-          <Field label="Reference tag" hint='Your own label, e.g. "ASH 39"'>
-            {({ id }) => (
-              <input
-                id={id}
-                className="field"
-                value={form.referenceTag}
-                onChange={(e) => update({ referenceTag: e.target.value })}
-              />
-            )}
-          </Field>
+        <div className={`${panelCls} space-y-4`}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Invoice no." hint="Optional">
+              {({ id }) => (
+                <input
+                  id={id}
+                  className={inputCls}
+                  value={form.invoiceNo}
+                  onChange={(e) => update({ invoiceNo: e.target.value })}
+                />
+              )}
+            </Field>
+            <Field label="Invoice date" hint="Only if it differs">
+              {({ id }) => (
+                <input
+                  id={id}
+                  className={inputCls}
+                  type="date"
+                  max={todayIST()}
+                  value={form.invoiceDate}
+                  onChange={(e) => update({ invoiceDate: e.target.value })}
+                />
+              )}
+            </Field>
+          </div>
 
-          <MoneyInput
-            label="Discount"
-            value={form.discountPaise}
-            onChange={(discountPaise) => update({ discountPaise })}
-            error={errors.discountPaise}
-            hint="Cannot exceed the base total"
-          />
-          <MoneyInput
-            label="Freight"
-            value={form.freightPaise}
-            onChange={(freightPaise) => update({ freightPaise })}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <MoneyInput
+              label="Discount"
+              value={form.discountPaise}
+              onChange={(discountPaise) => update({ discountPaise })}
+              error={errors.discountPaise}
+              hint="Cannot exceed the base total"
+            />
+            <MoneyInput
+              label="Freight"
+              value={form.freightPaise}
+              onChange={(freightPaise) => update({ freightPaise })}
+            />
+          </div>
 
-          <Field label="Invoice date" hint="Only if it differs from the entry date">
-            {({ id }) => (
-              <input
-                id={id}
-                className="field"
-                type="date"
-                max={todayIST()}
-                value={form.invoiceDate}
-                onChange={(e) => update({ invoiceDate: e.target.value })}
-              />
-            )}
-          </Field>
-
-          <label className="mb-3 flex items-center gap-2">
+          <label className="flex items-start gap-2">
             <input
               type="checkbox"
+              className="mt-1"
               checked={form.isReturnNote}
               onChange={(e) => update({ isReturnNote: e.target.checked })}
             />
-            <span className="text-sm">
+            <span className="text-body-md">
               This is a return or credit/debit note
-              <span className="block text-xs text-[var(--color-muted)]">
+              <span className="block text-label-caps text-on-surface-variant">
                 Posts the opposite way to its mode
               </span>
             </span>
@@ -403,7 +445,7 @@ export function TransactionForm({
             {({ id }) => (
               <textarea
                 id={id}
-                className="field"
+                className={inputCls}
                 rows={2}
                 value={form.notes}
                 onChange={(e) => update({ notes: e.target.value })}
@@ -414,49 +456,60 @@ export function TransactionForm({
       )}
 
       {/* The live summary — no surprises on save (§10.1, FR-T4). */}
-      <div className="card mb-3 p-3" aria-live="polite">
-        <dl className="grid grid-cols-2 gap-1 text-sm">
-          <dt>Base total</dt>
-          <dd className="text-right">
-            <Money paise={totals.baseTotalPaise} />
-          </dd>
-
-          <dt>GST {form.gstRate || 0}%</dt>
-          <dd className="text-right">
-            {/* §8.3 — a zero rate shows an em dash, not ₹0.00. */}
-            {Number(form.gstRate) === 0 ? '—' : <Money paise={totals.gstAmountPaise} />}
-          </dd>
-
-          {totals.roundOffPaise !== 0 && (
-            <>
-              <dt>Round off</dt>
-              <dd className="text-right">
-                <Money paise={totals.roundOffPaise} />
-              </dd>
-            </>
-          )}
-
-          <dt className="text-base font-semibold">Total</dt>
-          <dd className="text-right text-base font-semibold">
+      <div className={`${panelCls} space-y-1`} aria-live="polite">
+        <Row label="Base total" value={<Money paise={totals.baseTotalPaise} />} />
+        {form.discountPaise !== null && form.discountPaise !== 0 && (
+          // "Less discount" carrying a POSITIVE figure — the interface never
+          // shows a bare minus sign (§10.8).
+          <Row label="Less discount" value={<Money paise={form.discountPaise} />} />
+        )}
+        {form.freightPaise !== null && form.freightPaise !== 0 && (
+          <Row label="Freight" value={<Money paise={form.freightPaise} />} />
+        )}
+        <Row
+          label={`GST ${form.gstRate || 0}%`}
+          // §8.3 — a zero rate shows an em dash, not ₹0.00. The two mean
+          // different things and the owner needs to tell them apart.
+          value={Number(form.gstRate) === 0 ? '—' : <Money paise={totals.gstAmountPaise} />}
+        />
+        {totals.roundOffPaise !== 0 && (
+          <Row label="Round off" value={<Money paise={totals.roundOffPaise} />} />
+        )}
+        <div className="flex items-center justify-between border-t border-outline-variant pt-1">
+          <span className="font-semibold">Total amount</span>
+          <span className="font-semibold">
             <Money paise={totals.grandTotalPaise} />
-          </dd>
-        </dl>
+          </span>
+        </div>
       </div>
 
       {failure && (
-        <p role="alert" className="mb-3 text-sm text-[var(--color-payable)]">
+        <p role="alert" className="text-body-md text-negative">
           {failure} Your entry has been kept.
         </p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 flex gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface)] p-3">
-        <button type="button" className="btn flex-1" onClick={onCancel}>
+      <div className="flex gap-2">
+        <Button variant="outline" className="flex-1 py-2.5" onClick={onCancel}>
           Cancel
-        </button>
-        <button type="submit" className="btn btn-primary flex-1" disabled={!canSave}>
-          {saving ? 'Saving…' : 'Save'}
+        </Button>
+        <button
+          type="submit"
+          disabled={!canSave}
+          className="flex-1 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : `Save ${form.mode}`}
         </button>
       </div>
     </form>
+  );
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-on-surface-variant">{label}</span>
+      <span className="font-semibold">{value}</span>
+    </div>
   );
 }

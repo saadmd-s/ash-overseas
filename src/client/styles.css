@@ -1,37 +1,146 @@
 @import 'tailwindcss';
 
 /**
- * Design tokens — SRS §18: "Tailwind CSS v4 with design tokens in one @theme
+ * Design tokens — the single source of truth for every visual value in the
+ * application. SRS §18: "Tailwind CSS v4 with design tokens in one @theme
  * block. Tokens are the single source of truth — no hard-coded hex or px in
  * components."
  *
- * Colour is ALWAYS secondary to icon and text (§10.10). Deliberately not
- * red/green as the sole signal: red-green colour blindness is common, and
- * neither state is an error — a payable is a normal trading position.
+ * The naming convention is Material 3's `x` / `on-x` pairing, and it is
+ * load-bearing rather than decorative: text placed on a `bg-x` surface always
+ * uses `text-on-x`. Follow that one rule and AA contrast holds by construction,
+ * because the pairing itself tells you which foreground belongs on which
+ * ground. There is no way to accidentally put low-contrast text on a container.
+ *
+ * Declaring `--color-primary` here generates the whole utility family —
+ * `bg-primary`, `text-primary`, `border-primary`, `ring-primary` — from one
+ * line. That is why no component in this application contains a raw hex value.
+ *
+ * A NOTE ON WHAT IS DELIBERATELY ABSENT. Custom spacing names (`--spacing-sm`,
+ * `--spacing-md`, `--spacing-lg`) are not defined and must never be added. In
+ * Tailwind v4 those names collide with the reserved size scale, so declaring
+ * `--spacing-lg` silently breaks `max-w-lg`, `text-lg` and `rounded-lg` across
+ * the entire application — with no error, only wrong layout. The numeric scale
+ * (1 = 4px, 2 = 8px, ...) is used exclusively.
  */
 @theme {
+  /* ---------------------------------------------------------------------
+     Typeface — Inter Variable, self-hosted via @fontsource-variable/inter
+     and imported once in main.tsx. NOT Google Fonts: the §16.2 CSP forbids
+     external origins, and one variable file covers every weight.
+     --------------------------------------------------------------------- */
   --font-sans:
-    'Inter var', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
-  /* Balance direction. Paired with an icon and words, never used alone. */
-  --color-receivable: #0f7b4f;
-  --color-receivable-soft: #e7f5ee;
-  --color-payable: #b4451f;
-  --color-payable-soft: #fdefe8;
-  --color-settled: #4b5563;
+  /* ---------------------------------------------------------------------
+     Brand and core
 
-  --color-ink: #111827;
-  --color-muted: #4b5563;
-  --color-line: #e5e7eb;
-  --color-surface: #ffffff;
-  --color-canvas: #f9fafb;
-  --color-accent: #1f2937;
+     `primary` is a VERY deep navy — near-black, not a mid-blue. That choice
+     is what makes the application read as institutional rather than as a
+     consumer product. A brighter brand blue would look like a fintech
+     startup; this looks like a ledger book.
+     --------------------------------------------------------------------- */
+  --color-primary: #091426;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #1e293b;
+  --color-on-primary-container: #d8e3fb;
+  --color-secondary: #5b5e67;
+  --color-secondary-container: #dfe2ed;
+  --color-on-secondary-container: #3f424b;
 
-  /* 44px is the minimum tap target (§10.1). */
-  --spacing-tap: 2.75rem;
+  /* ---------------------------------------------------------------------
+     Surfaces — an eight-step ramp from lowest (cards) to highest.
 
-  --text-headline: 2rem;
-  --text-headline--line-height: 2.25rem;
+     The ramp does the work that elevation and shadow would do in a Material
+     app. Depth is expressed as TINT, not as shadow, which keeps the interface
+     flat and printable-looking.
+
+     Note that `background` is not pure white — it is a soft white with a faint
+     blue cast, and cards sit on top of it in pure white. That inversion is
+     deliberate: it gives every card a visible edge without a shadow.
+     --------------------------------------------------------------------- */
+  --color-background: #f8f9ff;
+  --color-surface: #f8f9ff;
+  --color-surface-bright: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eff4ff;
+  --color-surface-container: #e5eeff;
+  --color-surface-container-high: #dce9ff;
+  --color-surface-container-highest: #d3e4fe;
+  --color-on-surface: #0b1c30;
+  --color-on-surface-variant: #45474c;
+  --color-outline: #75777d;
+  --color-outline-variant: #c5c6cd;
+
+  /* ---------------------------------------------------------------------
+     Semantic — balance direction (§10.10)
+
+     The two most important colours in the application, because they carry
+     financial meaning. Both are ALWAYS accompanied by an icon and by words;
+     colour is the third, redundant signal and never the only one. Roughly 8%
+     of men have some form of colour-vision deficiency and red/green is the
+     exact pair they lose — a ledger that says "you owe" only in red is a
+     ledger that lies to those users.
+
+     The green is deliberately deep and desaturated rather than a bright
+     #22c55e. A saturated green reads as "success!", a celebration. Here it
+     means "this is a receivable" — a neutral fact about a trading position.
+
+     `negative` doubles as the error and destructive colour. That collapse is
+     deliberate: in this application "money flowing the wrong way" and
+     "something went wrong" are close enough in the owner's mind that a second
+     red would only add noise.
+     --------------------------------------------------------------------- */
+  --color-positive: #0f7b4d;
+  --color-on-positive: #ffffff;
+  --color-positive-container: #c9f2dc;
+  --color-on-positive-container: #06301d;
+  --color-negative: #ba1a1a;
+  --color-on-negative: #ffffff;
+  --color-negative-container: #ffdad6;
+  --color-on-negative-container: #410002;
+  --color-neutral: #5b5e67;
+
+  /* ---------------------------------------------------------------------
+     Type scale — six named steps.
+
+     Size, line-height, weight and tracking are baked into each token, so
+     `text-display-lg` sets all four at once and no component ever specifies a
+     weight or a tracking separately.
+
+     The negative tracking on the two large steps is not a flourish. Inter's
+     default spacing is tuned for body copy and looks loose at 32px; -0.02em
+     is what makes the balance headline read as typeset rather than as
+     scaled-up body text.
+     --------------------------------------------------------------------- */
+  --text-display-lg: 2rem;
+  --text-display-lg--line-height: 2.5rem;
+  --text-display-lg--font-weight: 700;
+  --text-display-lg--letter-spacing: -0.02em;
+
+  --text-headline-md: 1.5rem;
+  --text-headline-md--line-height: 2rem;
+  --text-headline-md--font-weight: 600;
+  --text-headline-md--letter-spacing: -0.01em;
+
+  --text-headline-sm: 1.25rem;
+  --text-headline-sm--line-height: 1.75rem;
+  --text-headline-sm--font-weight: 600;
+
+  --text-body-lg: 1rem;
+  --text-body-lg--line-height: 1.5rem;
+  --text-body-lg--font-weight: 400;
+
+  --text-body-md: 0.875rem;
+  --text-body-md--line-height: 1.25rem;
+  --text-body-md--font-weight: 400;
+
+  /* Always paired with the `uppercase` utility at the call site. The +0.05em
+     is what makes uppercase legible at 12px. */
+  --text-label-caps: 0.75rem;
+  --text-label-caps--line-height: 1rem;
+  --text-label-caps--font-weight: 600;
+  --text-label-caps--letter-spacing: 0.05em;
 }
 
 @layer base {
@@ -40,22 +149,42 @@
   }
 
   body {
-    background: var(--color-canvas);
-    color: var(--color-ink);
+    background: var(--color-background);
+    color: var(--color-on-surface);
     font-family: var(--font-sans);
+    font-size: var(--text-body-md);
+    line-height: var(--text-body-md--line-height);
     margin: 0;
-    /* Respect the phone's safe areas; the action bar sits above the home bar. */
-    padding-bottom: env(safe-area-inset-bottom);
+    /* Keeps Inter from rendering heavy on macOS. */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Amounts align down a column, so a misread is less likely (§4.1). */
-  .tabular {
+  /**
+   * Tabular figures, on every amount in the application (§4.1).
+   *
+   * Inter's default figures are proportional — a `1` is narrower than a `0` —
+   * so a column of amounts in a ledger visibly wobbles and the eye cannot scan
+   * down it. Tabular figures give every digit the same advance width, so
+   * decimal points line up with no explicit alignment. This applies at every
+   * size, including the 32px headline.
+   */
+  .tnum {
     font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
   }
 
-  /* Visible focus rings — never removed without a replacement (§10.10). */
+  /**
+   * A focus ring is never removed without a replacement.
+   *
+   * Components that style their own focus pair `outline-none` with
+   * `focus:ring-2 focus:ring-primary` (or `focus-within:` on wrapped inputs).
+   * This rule is the safety net for everything that does not — losing the
+   * focus indicator is the single most common accessibility failure in web
+   * forms, and it must not be one keystroke away.
+   */
   :focus-visible {
-    outline: 3px solid var(--color-accent);
+    outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
 
@@ -64,57 +193,6 @@
   select,
   textarea {
     font: inherit;
+    color: inherit;
   }
-}
-
-@layer components {
-  .btn {
-    min-height: var(--spacing-tap);
-    border-radius: 0.5rem;
-    border: 1px solid var(--color-line);
-    background: var(--color-surface);
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-  }
-
-  .btn-primary {
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-    color: white;
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .field {
-    display: block;
-    width: 100%;
-    min-height: var(--spacing-tap);
-    border: 1px solid var(--color-line);
-    border-radius: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background: var(--color-surface);
-  }
-
-  .card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
-    border-radius: 0.75rem;
-  }
-}
-
-/* Screen-reader-only text: the accessible name always spells the direction out
-   in full, even where the visual label abbreviates (§10.10). */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
 }

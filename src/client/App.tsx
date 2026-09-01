@@ -1,23 +1,32 @@
 /**
- * The application shell and router — SRS §10.2.
+ * The router and the authenticated frame — SRS §10.2.
  *
  * A small history-API router rather than a routing library: the navigation map
- * is five screens deep, and a dependency would be weight for nothing. The
- * Worker serves index.html for any non-asset path, so deep links work.
+ * is a handful of screens deep, and a dependency would be weight for nothing.
+ * The Worker serves index.html for any non-asset path, so deep links work.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, setSessionLostHandler, type Dealer } from './lib';
-import { ErrorState, Loading, Toast } from './components';
+import { ErrorState, Loading, Toast } from './ui';
+import { AppShell, type NavKey } from './AppShell';
 import { AllTransactions, DealerList, Home, NewDealer } from './screens/Home';
 import { DealerDetail } from './screens/DealerDetail';
 import { TransactionForm } from './screens/TransactionForm';
 import { PaymentForm } from './screens/PaymentForm';
-import { AuditView, GateDisabledBanner, Login, Settings, type AuthState } from './screens/Auth';
+import {
+  AuditView,
+  GateDisabledBanner,
+  Login,
+  Settings,
+  signOut,
+  type AuthState,
+} from './screens/Auth';
 
 type Route =
   | { name: 'home' }
   | { name: 'list'; type: 'supplier' | 'buyer' }
+  | { name: 'dealers' }
   | { name: 'dealer'; id: number }
   | { name: 'transaction'; id: number; mode: 'purchase' | 'sale' }
   | { name: 'payment'; id: number }
@@ -34,6 +43,7 @@ function parse(pathname: string): Route {
   if (parts[0] === 'settings') return { name: 'settings' };
   if (parts[0] === 'audit') return { name: 'audit' };
   if (parts[0] === 'dealers') {
+    if (parts[1] === undefined) return { name: 'dealers' };
     if (parts[1] === 'new') return { name: 'new-dealer' };
     const id = Number(parts[1]);
     if (Number.isInteger(id) && id > 0) {
@@ -45,6 +55,34 @@ function parse(pathname: string): Route {
     }
   }
   return { name: 'home' };
+}
+
+/** Which navigation destination a route belongs to, and what the header says. */
+function chromeFor(route: Route): { nav: NavKey; title: string } {
+  switch (route.name) {
+    case 'home':
+      return { nav: 'home', title: 'Home' };
+    case 'list':
+      return route.type === 'supplier'
+        ? { nav: 'purchase', title: 'Purchase' }
+        : { nav: 'sale', title: 'Sale' };
+    case 'dealers':
+      return { nav: 'dealers', title: 'Dealers' };
+    case 'dealer':
+      return { nav: 'dealers', title: 'Dealer' };
+    case 'new-dealer':
+      return { nav: 'dealers', title: 'New dealer' };
+    case 'transaction':
+      return { nav: 'dealers', title: 'New transaction' };
+    case 'payment':
+      return { nav: 'dealers', title: 'Add money' };
+    case 'all':
+      return { nav: 'other', title: 'All transactions' };
+    case 'settings':
+      return { nav: 'other', title: 'Account' };
+    case 'audit':
+      return { nav: 'other', title: 'Audit log' };
+  }
 }
 
 /**
@@ -121,10 +159,18 @@ function SignedIn({ auth, onAuthChanged }: { auth: AuthState; onAuthChanged: () 
   }, [navigate]);
 
   const showToast = useCallback((message: string) => setToast(message), []);
+  const { nav, title } = chromeFor(route);
 
   return (
-    <>
-      <Chrome route={route} navigate={navigate} />
+    <AppShell
+      active={nav}
+      title={title}
+      username={auth.username}
+      auditActive={route.name === 'audit'}
+      accountActive={route.name === 'settings'}
+      navigate={navigate}
+      onSignOut={() => void signOut()}
+    >
       <Screen
         route={route}
         navigate={navigate}
@@ -133,18 +179,7 @@ function SignedIn({ auth, onAuthChanged }: { auth: AuthState; onAuthChanged: () 
         onAuthChanged={onAuthChanged}
       />
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
-    </>
-  );
-}
-
-function Chrome({ route, navigate }: { route: Route; navigate: (path: string) => void }) {
-  if (route.name === 'home') return null;
-  return (
-    <div className="border-b border-[var(--color-line)] bg-[var(--color-surface)] p-2">
-      <button type="button" className="btn" onClick={() => navigate('/')}>
-        ← Home
-      </button>
-    </div>
+    </AppShell>
   );
 }
 
@@ -163,16 +198,15 @@ function Screen({
 }) {
   switch (route.name) {
     case 'home':
-      return (
-        <Home
-          onOpenList={(type) => navigate(type === 'supplier' ? '/purchase' : '/sale')}
-          onOpenAll={() => navigate('/transactions')}
-          onNewDealer={() => navigate('/dealers/new')}
-        />
-      );
+      return <Home navigate={navigate} />;
 
     case 'list':
-      return <DealerList type={route.type} />;
+      return (
+        <DealerList type={route.type === 'supplier' ? 'supplier' : 'buyer'} navigate={navigate} />
+      );
+
+    case 'dealers':
+      return <DealerList navigate={navigate} />;
 
     case 'all':
       return <AllTransactions />;
@@ -187,7 +221,7 @@ function Screen({
       return (
         <NewDealer
           onSaved={(id) => navigate(`/dealers/${id}`, true)}
-          onCancel={() => navigate('/')}
+          onCancel={() => navigate('/dealers')}
         />
       );
 
@@ -256,6 +290,7 @@ function WithDealer({
     <DealerDetail
       key={version}
       dealer={dealer}
+      navigate={navigate}
       onAddTransaction={(mode) => navigate(`/dealers/${dealer.id}/transaction/${mode}`)}
       onAddPayment={() => navigate(`/dealers/${dealer.id}/payment`)}
       onChanged={() => {

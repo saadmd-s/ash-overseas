@@ -1,63 +1,100 @@
 /**
- * Shared components.
+ * Domain components — the pieces that know what money and balances mean.
  *
  * The two rules that must never regress here:
  *   - every balance renders through `balanceHeadline()` / `formatPaise()` —
  *     the UI never formats money itself (§10.8);
- *   - no screen shows "debit", "credit", or a bare +/− (§5, §10.8).
+ *   - no screen shows "debit", "credit", or a bare +/- (§5, §10.8).
  */
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { ArrowDownRight, ArrowUpRight, Download, FileSpreadsheet, Minus } from 'lucide-react';
 import { balanceHeadline, formatPaise, groupIndianDigits, parseRupeesToPaise } from '../money';
 import { downloadExport } from './lib';
+import { Button, Modal } from './ui';
 
 // ---------------------------------------------------------------------------
-// Balance display
+// Balance display — the hero of every dealer screen
 // ---------------------------------------------------------------------------
 
-function direction(paise: number): 'receivable' | 'payable' | 'settled' {
+type Direction = 'receivable' | 'payable' | 'settled';
+
+function direction(paise: number): Direction {
   if (paise > 0) return 'receivable';
   if (paise < 0) return 'payable';
   return 'settled';
 }
 
-const ICON = { receivable: '↑', payable: '↓', settled: '•' } as const;
-const TONE = {
-  receivable: 'text-[var(--color-receivable)]',
-  payable: 'text-[var(--color-payable)]',
-  settled: 'text-[var(--color-settled)]',
+/**
+ * Direction is carried three ways at once — words, icon, colour — and never by
+ * colour alone (§10.10). The words are what carry the meaning; the icon and
+ * the colour are reinforcement. See the note on the semantic tokens in
+ * styles.css for why that ordering is not negotiable.
+ */
+const ICON = {
+  receivable: ArrowUpRight,
+  payable: ArrowDownRight,
+  settled: Minus,
 } as const;
 
+const TONE: Record<Direction, string> = {
+  receivable: 'text-positive',
+  payable: 'text-negative',
+  settled: 'text-neutral',
+};
+
 /**
- * The hero balance (§10.1).
+ * The direction in words, for display at a different type size from the figure.
  *
- * Direction is carried by an icon AND the words themselves; colour is only ever
- * a third, redundant signal (§10.10).
+ * `balanceHeadline` from the money module returns the whole sentence and stays
+ * exactly as SRS Appendix B specifies it — it is still what a screen reader
+ * hears below. This only splits the same information across two lines so the
+ * amount can be the largest thing on the page while the words above it stay at
+ * label size. The wording matches the money module deliberately: two different
+ * phrasings for one fact would be worse than either.
  */
+function directionLabel(paise: number, dealerName: string): string {
+  if (paise > 0) return `${dealerName} owes you`;
+  if (paise < 0) return `You owe ${dealerName}`;
+  return 'Settled';
+}
+
 export function BalanceHeadline({ paise, dealerName }: { paise: number; dealerName: string }) {
   const d = direction(paise);
+  const Icon = ICON[d];
   return (
-    <p className={`text-headline font-bold ${TONE[d]}`}>
-      <span aria-hidden="true">{ICON[d]} </span>
-      <span className="tabular">{balanceHeadline(paise, dealerName)}</span>
-    </p>
+    <div className={TONE[d]}>
+      {/* The whole sentence, announced once. The split below is visual only. */}
+      <span className="sr-only">{balanceHeadline(paise, dealerName)}</span>
+      <p aria-hidden="true" className="flex items-center gap-1.5 text-label-caps uppercase">
+        <Icon size={18} />
+        {directionLabel(paise, dealerName)}
+      </p>
+      <p aria-hidden="true" className="tnum text-display-lg">
+        {formatPaise(Math.abs(paise))}
+      </p>
+    </div>
   );
 }
 
-/** The same language, compact, for a list row. */
-export function BalanceInline({ paise, dealerName }: { paise: number; dealerName: string }) {
+/** The compact sibling, for a list row. */
+export function InlineBalance({ paise, dealerName }: { paise: number; dealerName: string }) {
   const d = direction(paise);
+  const Icon = ICON[d];
   return (
-    <span className={`tabular text-sm ${TONE[d]}`}>
-      <span aria-hidden="true">{ICON[d]} </span>
-      {balanceHeadline(paise, dealerName)}
+    <span className={`flex items-center gap-1 text-body-md font-medium ${TONE[d]}`}>
+      <span className="sr-only">{balanceHeadline(paise, dealerName)}</span>
+      <Icon size={15} aria-hidden="true" />
+      <span aria-hidden="true" className="tnum">
+        {formatPaise(Math.abs(paise))}
+      </span>
     </span>
   );
 }
 
 /** An amount. Wraps `formatPaise` — the only money renderer (§10.8). */
 export function Money({ paise }: { paise: number }) {
-  return <span className="tabular">{formatPaise(paise)}</span>;
+  return <span className="tnum">{formatPaise(paise)}</span>;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +117,12 @@ interface MoneyInputProps {
  * §10.6 — form state never holds a float rupee value. The component keeps the
  * raw typed text only so the caret and grouping behave; the value it reports is
  * always the parsed integer, and `null` when the field is empty, because an
- * empty discount is *absent*, not ₹0.
+ * empty discount is ABSENT, not ₹0.
+ *
+ * The focus ring lives on the WRAPPER via `focus-within:`, so the ₹ prefix is
+ * enclosed by the ring rather than stranded outside it. `inputMode="decimal"`
+ * summons the numeric keypad on a phone — a small thing that matters enormously
+ * when entering forty amounts in a row.
  */
 export function MoneyInput({ label, value, onChange, required, error, hint }: MoneyInputProps) {
   const id = useId();
@@ -109,30 +151,34 @@ export function MoneyInput({ label, value, onChange, required, error, hint }: Mo
   }
 
   return (
-    <div className="mb-3">
-      <label htmlFor={id} className="mb-1 block text-sm font-medium">
+    <div className="space-y-1">
+      <label htmlFor={id} className="block text-label-caps uppercase text-on-surface-variant">
         {label}
         {required && <span aria-hidden="true"> *</span>}
       </label>
-      <input
-        id={id}
-        className="field tabular"
-        // A numeric keypad on a phone, while still allowing grouping commas.
-        inputMode="decimal"
-        autoComplete="off"
-        value={text}
-        onChange={(e) => handle(e.target.value)}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
-        placeholder="0.00"
-      />
+      <div className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 transition-shadow focus-within:ring-2 focus-within:ring-primary">
+        <span aria-hidden="true" className="text-on-surface-variant">
+          ₹
+        </span>
+        <input
+          id={id}
+          className="tnum w-full bg-transparent py-2.5 outline-none"
+          inputMode="decimal"
+          autoComplete="off"
+          value={text}
+          onChange={(e) => handle(e.target.value)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
+          placeholder="0.00"
+        />
+      </div>
       {hint && !error && (
-        <p id={`${id}-hint`} className="mt-1 text-xs text-[var(--color-muted)]">
+        <p id={`${id}-hint`} className="text-label-caps text-on-surface-variant">
           {hint}
         </p>
       )}
       {error && (
-        <p id={`${id}-error`} className="mt-1 text-xs text-[var(--color-payable)]">
+        <p id={`${id}-error`} className="text-body-md text-negative">
           {error}
         </p>
       )}
@@ -149,100 +195,15 @@ function renderPaise(paise: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Form primitives
+// Void confirmation — FR-A2
 // ---------------------------------------------------------------------------
-
-export function Field({
-  label,
-  children,
-  error,
-  hint,
-}: {
-  label: string;
-  children: (props: { id: string; describedBy?: string }) => ReactNode;
-  error?: string;
-  hint?: string;
-}) {
-  const id = useId();
-  const describedBy = error ? `${id}-error` : hint ? `${id}-hint` : undefined;
-  return (
-    <div className="mb-3">
-      <label htmlFor={id} className="mb-1 block text-sm font-medium">
-        {label}
-      </label>
-      {children({ id, describedBy })}
-      {hint && !error && (
-        <p id={`${id}-hint`} className="mt-1 text-xs text-[var(--color-muted)]">
-          {hint}
-        </p>
-      )}
-      {error && (
-        <p id={`${id}-error`} className="mt-1 text-xs text-[var(--color-payable)]">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** A segmented control. Used for mode, bank account and payment direction. */
-export function Segmented<T extends string>({
-  legend,
-  options,
-  value,
-  onChange,
-}: {
-  legend: string;
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <fieldset className="mb-3">
-      <legend className="mb-1 text-sm font-medium">{legend}</legend>
-      <div className="flex gap-2">
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={value === o.value}
-            onClick={() => onChange(o.value)}
-            className={`btn flex-1 ${value === o.value ? 'btn-primary' : ''}`}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    </fieldset>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Feedback and dialogs
-// ---------------------------------------------------------------------------
-
-export function Toast({ message, onDone }: { message: string; onDone: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onDone, 4000);
-    return () => clearTimeout(t);
-  }, [onDone]);
-
-  return (
-    <div
-      role="status"
-      className="card fixed inset-x-3 bottom-3 z-50 p-3 shadow-lg"
-      style={{ borderColor: 'var(--color-receivable)' }}
-    >
-      {message}
-    </div>
-  );
-}
 
 /**
- * Void confirmation — FR-A2.
- *
  * "Voiding requires an explicit confirmation dialog that names the entry and
  * the amount." Both are in the prompt below, deliberately.
+ *
+ * Two equal-width buttons, destructive on the right, and the dialog cannot be
+ * dismissed while the request is in flight.
  */
 export function VoidDialog({
   entryLabel,
@@ -257,56 +218,28 @@ export function VoidDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    ref.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center">
-      <div
-        ref={ref}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="void-title"
-        className="card w-full max-w-md p-4"
-      >
-        <h2 id="void-title" className="mb-2 text-lg font-semibold">
-          Void {entryLabel}?
-        </h2>
-        <p className="mb-1">
-          This posts an equal and opposite reversing entry for{' '}
-          <strong>
-            <Money paise={amountPaise} />
-          </strong>
-          .
-        </p>
-        <p className="mb-4 text-sm text-[var(--color-muted)]">
-          Nothing is deleted. The original stays in the history, struck through, with its reversal
-          beside it.
-        </p>
-        <div className="flex gap-2">
-          <button type="button" className="btn flex-1" onClick={onCancel} disabled={busy}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary flex-1"
-            onClick={onConfirm}
-            disabled={busy}
-          >
-            {busy ? 'Voiding…' : 'Void entry'}
-          </button>
-        </div>
+    <Modal title="Void this entry?" busy={busy} onClose={onCancel}>
+      <p className="mb-2 text-body-lg">
+        {entryLabel} — this posts an equal and opposite reversing entry for{' '}
+        <strong className="font-semibold">
+          <Money paise={amountPaise} />
+        </strong>
+        .
+      </p>
+      <p className="mb-5 text-on-surface-variant">
+        Nothing is deleted. The original stays in the history, struck through, with its reversal
+        beside it.
+      </p>
+      <div className="flex gap-2">
+        <Button variant="outline" className="flex-1 py-2.5" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="destructive" className="flex-1" onClick={onConfirm} disabled={busy}>
+          {busy ? 'Voiding...' : 'Void entry'}
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -314,14 +247,36 @@ export function VoidDialog({
 // Export menu
 // ---------------------------------------------------------------------------
 
-/** Export in either format. Both go through the same row-builder (§11.2). */
+/**
+ * Export in either format. Both go through the same row-builder (§11.2).
+ *
+ * Outlined, never filled: export is secondary to entry, and the primary action
+ * on any screen carrying this button is recording something new.
+ */
 export function ExportMenu({ path, label = 'Export' }: { path: string; label?: string }) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onAway = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onAway);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onAway);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   async function run(format: 'xlsx' | 'csv') {
     setBusy(true);
     setError(null);
+    setOpen(false);
     try {
       await downloadExport(path, format);
     } catch {
@@ -332,54 +287,50 @@ export function ExportMenu({ path, label = 'Export' }: { path: string; label?: s
   }
 
   return (
-    <div>
-      <div className="flex gap-2">
-        <button type="button" className="btn" onClick={() => run('xlsx')} disabled={busy}>
-          {busy ? 'Preparing…' : `${label} (Excel)`}
-        </button>
-        <button type="button" className="btn" onClick={() => run('csv')} disabled={busy}>
-          CSV
-        </button>
-      </div>
+    <div className="relative" ref={ref}>
+      <Button
+        variant="outline"
+        className="flex items-center gap-2"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={busy}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Download size={18} aria-hidden="true" />
+        {busy ? 'Preparing...' : label}
+      </Button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-40 mt-1 w-44 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-body-md transition-colors hover:bg-surface-container"
+            onClick={() => void run('xlsx')}
+          >
+            <FileSpreadsheet size={18} aria-hidden="true" />
+            Excel (.xlsx)
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 border-t border-outline-variant px-3 py-2.5 text-left text-body-md transition-colors hover:bg-surface-container"
+            onClick={() => void run('csv')}
+          >
+            <FileSpreadsheet size={18} aria-hidden="true" />
+            CSV
+          </button>
+        </div>
+      )}
+
       {error && (
-        <p role="alert" className="mt-1 text-xs text-[var(--color-payable)]">
+        <p role="alert" className="mt-1 text-body-md text-negative">
           {error}
         </p>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// States
-// ---------------------------------------------------------------------------
-
-export function Loading({ what }: { what: string }) {
-  return (
-    <p role="status" className="p-4 text-[var(--color-muted)]">
-      Loading {what}…
-    </p>
-  );
-}
-
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div role="alert" className="card m-3 p-4">
-      <p className="mb-2">{message}</p>
-      {onRetry && (
-        <button type="button" className="btn" onClick={onRetry}>
-          Try again
-        </button>
-      )}
-    </div>
-  );
-}
-
-export function Empty({ message, action }: { message: string; action?: ReactNode }) {
-  return (
-    <div className="p-4 text-center text-[var(--color-muted)]">
-      <p className="mb-2">{message}</p>
-      {action}
     </div>
   );
 }

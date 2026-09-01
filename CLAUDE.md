@@ -23,7 +23,14 @@ non-financial fields in place (notes, reference tag, item name) behind an entry
 detail sheet, and the `mode` ledger filter — accepted by the query schema and
 silently ignored since Phase 2 — actually filters.
 
-**212 tests green**: the six §6 scenarios at **both** the pure and
+**The interface has been redesigned to [docs/DESIGN.md](docs/DESIGN.md).** One
+`@theme` block of Material-3-paired tokens, Inter Variable self-hosted,
+`lucide-react`, and a route-aware `AppShell` — a sidebar at `lg`, a bottom tab
+bar below it. Every canonical class string lives in `src/client/ui.tsx`; no
+component holds a raw hex or px value. Behaviour, routes and API calls are
+unchanged.
+
+**214 tests green**: the six §6 scenarios at **both** the pure and
 D1-integration level, the §15.3 atomicity test, the Phase 2 reconciliation gate,
 the Phase 3 auth gate, and the edit/filter/cursor suite.
 
@@ -37,7 +44,13 @@ backup, restore, password recovery, correcting a wrong entry.
   `REPLACE_WITH_LEDGER_*_ID`, and the production restore drill (NFR-B3) has not
   been run. The drill _is_ verified locally. See RUNBOOK §First-time provisioning.
 - **The layout has never been seen at 360 px in a real browser**, and no export
-  download has been watched to actually save under the CSP.
+  download has been watched to actually save under the CSP. This matters more
+  since the redesign, not less: every screen changed, and typecheck, lint and
+  build passing say nothing about whether the bottom tab bar, the balance
+  headline and the entry sheet actually fit a 360 px phone.
+  Note that `vite dev` serves a **deliberately looser CSP** than production (see
+  the comment in `vite.config.ts`), so the export-download check has to be run
+  against `vite preview` or a real deploy to prove anything.
 - **`app.onError` is not covered by a test.** No route in the application can be
   made to throw on demand, and adding a fault-injection route to production code
   to prove a defensive handler works is a bad trade. What _is_ verified is the
@@ -57,6 +70,7 @@ them disagrees with SRS.md, the SRS wins.
 | [docs/TRD.md](docs/TRD.md)                                 | Architecture, module contracts, the non-negotiables list  |
 | [docs/APP_FLOW.md](docs/APP_FLOW.md)                       | Building a screen or a route; states and validation gates |
 | [docs/UIUX.md](docs/UIUX.md)                               | Building UI; components, copy rules, accessibility        |
+| [docs/DESIGN.md](docs/DESIGN.md)                           | Tokens, colour, type, the exact component class strings   |
 | [docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md)           | Touching the database; DDL, invariants, queries           |
 | [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | Deciding what to build next                               |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md)                         | Deploying, backing up, restoring, resetting a password    |

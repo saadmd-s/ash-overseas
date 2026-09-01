@@ -17,6 +17,12 @@
 >
 > The specific values in §4 remain proposals. Express them as `@theme` tokens;
 > the palette is open (see §4.2), the mechanism is not.
+>
+> **§4 is now settled.** [DESIGN.md](DESIGN.md) records the shipped palette,
+> type scale and component class strings, and `src/client/styles.css` is the
+> token source of truth. Where this document and DESIGN.md disagree on a visual
+> value, DESIGN.md wins; where either disagrees with the SRS on a rule, the SRS
+> wins.
 
 ---
 
