@@ -25,8 +25,7 @@
     "db:export:dev": "node scripts/db-export.ts --database ledger-dev",
     "db:verify-restore": "node scripts/verify-restore.ts",
     "auth:setup": "node scripts/set-credentials.ts",
-    "deploy": "vite build && wrangler deploy",
-    "deploy:prod": "node scripts/require-auth-secret.ts && vite build && wrangler deploy --env production",
+    "deploy:prod": "node scripts/deploy-prod.ts",
     "db:export:local": "node scripts/db-export.ts --local --database ledger-dev"
   },
   "dependencies": {

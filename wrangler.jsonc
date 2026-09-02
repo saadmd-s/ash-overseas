@@ -1,7 +1,16 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ash-overseas-ledger",
+  // The TOP-LEVEL name is the local-development Worker. It is deliberately not
+  // "ash": this environment binds ledger-dev and sets APP_ENV=development,
+  // which disables the fail-closed check — it must never be what reaches a
+  // public URL. The deployed name lives in env.production below.
+  "name": "ash-dev",
   "main": "src/worker/index.ts",
+
+  // This project deploys into a SPECIFIC Cloudflare account, and the machine
+  // deploying it is logged in to more than one. Without this, wrangler picks
+  // for you — and picking wrong means the ledger lands in the wrong account.
+  "account_id": "e5567e8cd6174399064ec40c20c71fdc",
   // Pinned to a date supported by BOTH runtimes in this repo: the workerd that
   // ships with wrangler, and the older one bundled by
   // @cloudflare/vitest-pool-workers. A date newer than the test runtime's
@@ -42,29 +51,39 @@
   // identically. The default environment binds ledger-dev; env.production binds
   // ledger-prod.
   //
-  // ⚠ database_id values are placeholders. Run, in the maintainer's Cloudflare
-  // account (SRS §19.2):
-  //     wrangler d1 create ledger-dev
-  //     wrangler d1 create ledger-prod
-  // and paste the returned IDs here. `--local` development works without them.
+  // Both databases exist, created in the account above, both in region APAC.
+  // `--local` development ignores these ids and uses .wrangler/state instead.
+  //
+  // ⚠ `wrangler d1 create` offers to write its own binding into this file. It
+  // must be declined: it writes `"binding": "ledger_dev"`, and every line of
+  // this application reads `env.DB`.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "ledger-dev",
-      "database_id": "REPLACE_WITH_LEDGER_DEV_ID",
+      "database_id": "a1d91d6a-5051-450a-a862-e71b10852f78",
       "migrations_dir": "drizzle/migrations",
     },
   ],
 
   "env": {
     "production": {
+      // The deployed Worker name, and therefore the URL:
+      // ash.<account-subdomain>.workers.dev
+      //
+      // Without this, wrangler derives "<top-level name>-production" and the
+      // URL becomes ash-dev-production.*. Changing it after the owner has
+      // installed the PWA means a new URL and a reinstall on their phone, so
+      // it is not a casual edit.
+      "name": "ash",
+
       // Turns on the fail-closed check: no AUTH_SECRET ⇒ serve nothing.
       "vars": { "APP_ENV": "production" },
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "ledger-prod",
-          "database_id": "REPLACE_WITH_LEDGER_PROD_ID",
+          "database_id": "6f0a0c60-b676-4df0-81c8-050ae3456d37",
           "migrations_dir": "drizzle/migrations",
         },
       ],
