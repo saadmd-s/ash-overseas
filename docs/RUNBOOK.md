@@ -67,13 +67,29 @@ and local-only — see [Things that will bite you](#things-that-will-bite-you).
 | `pnpm auth:setup`        | Write the login ([Logins](#logins-and-passwords))       |
 | `pnpm deploy:prod`       | Deploy to production                                    |
 
-The suite should read **212 passing**. If a number here has drifted, the count
+The suite should read **214 passing**. If a number here has drifted, the count
 in [README](../README.md) and [CLAUDE.md](../CLAUDE.md) is stale, not wrong —
 check what changed.
 
 ---
 
 ## First-time provisioning
+
+**Already done for this deployment.** Kept as the procedure for a rebuild or a
+move to another account.
+
+|                    |                                                                          |
+| ------------------ | ------------------------------------------------------------------------ |
+| URL                | **https://ash.ashoverseas.workers.dev**                                  |
+| Cloudflare account | `e5567e8cd6174399064ec40c20c71fdc`                                       |
+| Worker             | `ash` (from `env.production`; the top-level `ash-dev` is never deployed) |
+| Databases          | `ledger-prod`, `ledger-dev` — both region APAC                           |
+
+⚠ **Step 5 must be `pnpm deploy:prod` and nothing else.** Not `wrangler deploy`,
+and not `vite build && wrangler deploy --env production`. See "The
+`CLOUDFLARE_ENV` trap" under [Things that will bite you](#things-that-will-bite-you) —
+that shortcut deploys the development configuration with the auth gate disabled,
+and reports success while doing it.
 
 Once per account, following SRS §19.2.
 
@@ -121,11 +137,38 @@ pnpm check          # never deploy red
 pnpm deploy:prod
 ```
 
-`deploy:prod` runs `scripts/require-auth-secret.ts` first and **refuses to
-deploy** if `AUTH_SECRET` is missing from the production environment. That is
-not belt-and-braces: without it the login gate silently disables, and the
-Worker's own runtime check would then serve nothing at all — a dead site rather
-than an exposed one, but still a bad afternoon.
+`deploy:prod` is [`scripts/deploy-prod.ts`](../scripts/deploy-prod.ts), and it
+does three things in order:
+
+1. **Refuses to deploy without `AUTH_SECRET`.** Not belt-and-braces: without it
+   the login gate disables, and the Worker's own runtime check then serves
+   nothing at all — a dead site rather than an exposed one, but still a bad
+   afternoon. The one exception is a first deploy, when no Worker exists to hold
+   a secret yet.
+2. **Builds with `CLOUDFLARE_ENV=production`**, which is the only thing that
+   actually selects the environment.
+3. **Reads the generated config back and refuses to upload** unless it resolved
+   to `APP_ENV=production` and `ledger-prod`.
+
+Step 3 exists because the failure it catches is otherwise completely silent — a
+green build, a successful deploy, and the wrong database with the gate off. See
+"The `CLOUDFLARE_ENV` trap" in
+[Things that will bite you](#things-that-will-bite-you).
+
+**Never deploy with bare `wrangler deploy`.** There is deliberately no plain
+`pnpm deploy` script.
+
+After deploying, confirm the environment from the outside rather than trusting
+the output:
+
+```bash
+curl -sI https://ash.ashoverseas.workers.dev/ | grep -i content-security-policy
+# must be the strict one: default-src 'self'; ... and NO 'unsafe-inline'
+```
+
+`vite dev` serves a deliberately looser CSP (`unsafe-inline`, for React Fast
+Refresh — see the comment in `vite.config.ts`). Seeing that policy in production
+means a development build reached the deploy.
 
 If a migration is part of the release, apply it **before** deploying the code
 that needs it:
@@ -192,15 +235,33 @@ Against production, restoring into a scratch database (never into `ledger-prod`)
 
 ```bash
 pnpm exec wrangler d1 create ledger-scratch
-# add ledger-scratch to wrangler.jsonc temporarily, then:
 node scripts/verify-restore.ts --remote \
   --source ledger-prod --source-env production --scratch ledger-scratch
+pnpm exec wrangler d1 delete ledger-scratch --skip-confirmation
 ```
 
-**Status:** verified against a local database with real history. The production
-form of the drill has not been run in this account, because the account does not
-exist yet — it is step 8 of first-time provisioning, and it is the last thing
-that should be ticked before the owner enters real data.
+**Delete the scratch database when the drill is done.** After a successful run
+it holds a complete restored copy of the ledger — every dealer, every balance —
+in a database nobody is thinking about. It is a second copy of the data at rest,
+so it should exist only for the length of the drill. No binding in
+`wrangler.jsonc` is needed; the script addresses it by name.
+
+**Status:** the drill is verified against **remote D1**, which is what the
+production form exercises — 17 schema objects identical, row counts identical,
+and a dealer's ledger byte-exact in integer paise across export → wipe → replay,
+including a 1-paise entry and a ₹99,99,999.99 one. That run used seeded data in
+`ledger-dev`; the data was removed afterwards and `ledger-dev` is empty again.
+
+The drill against **`ledger-prod` itself has not passed**, and cannot yet: the
+script refuses a source with no ledger entries —
+
+```
+✗ The source database has no ledger entries, so nothing would be proven.
+```
+
+which is correct behaviour, not a failure. **Re-run it against `ledger-prod`
+once the owner has entered their first real transactions.** That is the last
+NFR-B3 tick, and it is now the only one outstanding.
 
 ### An actual restore
 
@@ -337,25 +398,54 @@ data:
 
 2. **`AUTH_SECRET` unset disables the gate.** Locally that is a convenience. In
    production the Worker refuses to serve at all, and `deploy:prod` refuses to
-   ship. Do not "fix" either check.
+   ship. Do not "fix" either check. The one exception, deliberate: on a FIRST
+   deploy there is no Worker yet, so its secrets cannot be listed —
+   `require-auth-secret.ts` recognises that, warns, and continues, because the
+   Worker it creates will refuse to serve until the secret is set.
 
-3. **A raw `wrangler d1 export` dump cannot be replayed.** Its statements come
+3. **The `CLOUDFLARE_ENV` trap — this one already caused a bad deploy.** With
+   `@cloudflare/vite-plugin`, `vite build` resolves the Worker configuration at
+   **build** time and writes it to `dist/<top-level name>/wrangler.json`, then
+   points `.wrangler/deploy/config.json` at it. `wrangler deploy` reads that
+   artefact. So `wrangler deploy --env production` is **silently ignored** — the
+   environment was decided during the build.
+
+   The first deploy of this project went out that way and reported success,
+   with:
+
+   ```
+   env.DB (ledger-dev)            D1 Database
+   env.APP_ENV ("development")    Environment Variable
+   ```
+
+   `APP_ENV=development` is the value that switches OFF the fail-closed check.
+   That Worker would not have refused to serve without `AUTH_SECRET`; it would
+   have served the ledger with the sign-in gate disabled, against the dev
+   database.
+
+   The environment is chosen by `CLOUDFLARE_ENV` in the build's environment, and
+   `scripts/deploy-prod.ts` does that, then reads the generated config back and
+   refuses to upload unless it says `APP_ENV=production` and `ledger-prod`.
+   **Always deploy with `pnpm deploy:prod`.** There is deliberately no plain
+   `pnpm deploy` script any more — it was the same trap without the guard.
+
+4. **A raw `wrangler d1 export` dump cannot be replayed.** Its statements come
    out alphabetically, so `INSERT INTO "transaction_lines"` lands before
    `CREATE TABLE transactions`, and the import dies on
    `no such table: main.transactions`. The `PRAGMA defer_foreign_keys=TRUE` in
    the dump does not help — that defers enforcement, and this is the parent table
    not existing yet. `pnpm db:export` reorders the statements to fix it. Use it.
 
-4. **`run_worker_first: true` in `wrangler.jsonc` must stay.** Without it the
+5. **`run_worker_first: true` in `wrangler.jsonc` must stay.** Without it the
    assets service answers before the Worker runs, and the HTML document ships
    with none of the §16.2 security headers — and the production fail-closed check
    is skipped for the app shell.
 
-5. **The session cookie is `SameSite=Strict`**, not `Lax`.
+6. **The session cookie is `SameSite=Strict`**, not `Lax`.
 
-6. **Never point the restore drill at `ledger-prod` as its scratch database.**
+7. **Never point the restore drill at `ledger-prod` as its scratch database.**
    The script refuses, but the refusal is the second line of defence.
 
-7. **`.dev.vars` is loaded by the test runner.** The suite resets `AUTH_SECRET`
+8. **`.dev.vars` is loaded by the test runner.** The suite resets `AUTH_SECRET`
    before every test so results do not depend on whether your machine has that
    file. If you add a test that cares about the gate, arm it explicitly.

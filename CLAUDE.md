@@ -34,15 +34,31 @@ unchanged.
 D1-integration level, the §15.3 atomicity test, the Phase 2 reconciliation gate,
 the Phase 3 auth gate, and the edit/filter/cursor suite.
 
+**It is deployed: https://ash.ashoverseas.workers.dev** — Worker `ash`, bound to
+`ledger-prod`, in Cloudflare account `e5567e8cd6174399064ec40c20c71fdc`.
+`AUTH_SECRET` is set and the login exists. Verified from outside: all six §16.2
+headers on the HTML document, the **strict** production CSP (no `unsafe-inline`
+— the dev relaxation did not leak), `401` on `/api/*` without a session, and a
+wrong username costing the same as a wrong password.
+
+**Always deploy with `pnpm deploy:prod`.** Never `wrangler deploy`, and never
+`vite build && wrangler deploy --env production` — the Cloudflare Vite plugin
+picks the environment at BUILD time, so `--env` is silently ignored and you ship
+the development config with the auth gate off. That happened once, for real. See
+RUNBOOK §Things that will bite you, item 3.
+
 **Operational work lives in [docs/RUNBOOK.md](docs/RUNBOOK.md)** — deploy,
 backup, restore, password recovery, correcting a wrong entry.
 
 ### What is NOT done
 
-- **Nothing is deployed.** The Cloudflare account does not exist yet, so the two
-  D1 databases are unmade, `wrangler.jsonc` still holds
-  `REPLACE_WITH_LEDGER_*_ID`, and the production restore drill (NFR-B3) has not
-  been run. The drill _is_ verified locally. See RUNBOOK §First-time provisioning.
+- **The restore drill has not passed against `ledger-prod`**, because it cannot
+  yet: the database has no entries and `verify-restore.ts` correctly refuses a
+  source that would prove nothing. The drill _is_ verified against **remote
+  D1** — schema, row counts and a dealer's ledger byte-exact in integer paise,
+  run against `ledger-dev` with seeded data since removed. **Re-run it against
+  `ledger-prod` once the first real transactions exist.** That is the last
+  NFR-B3 tick.
 - **The layout has never been seen at 360 px in a real browser**, and no export
   download has been watched to actually save under the CSP. This matters more
   since the redesign, not less: every screen changed, and typecheck, lint and
