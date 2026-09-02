@@ -286,7 +286,7 @@ const ACTION_LABEL: Record<string, string> = {
 function Figures({ tx, lines }: { tx: TransactionRow; lines: LineRow[] }) {
   // The same labels, in the same order, as the live summary on the entry form.
   // The owner should recognise the figures they typed.
-  const rows: [string, ReactNode][] = [['Base total', <Money paise={tx.baseTotalPaise} />]];
+  const rows: [string, ReactNode][] = [['Base price', <Money paise={tx.baseTotalPaise} />]];
   // "Less discount", carrying a positive figure: the interface never shows a
   // bare minus sign (§10.8).
   if (tx.discountPaise) rows.push(['Less discount', <Money paise={tx.discountPaise} />]);
@@ -310,7 +310,7 @@ function Figures({ tx, lines }: { tx: TransactionRow; lines: LineRow[] }) {
           </div>
         ))}
         <div className="mt-1 flex items-center justify-between border-t border-outline-variant pt-1 font-semibold">
-          <dt>Total amount</dt>
+          <dt>Full price</dt>
           <dd>
             <Money paise={tx.grandTotalPaise} />
           </dd>

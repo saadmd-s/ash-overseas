@@ -7,10 +7,16 @@
  * there is no surprise on save. The server recomputes authoritatively and its
  * figures win.
  *
- * THE SINGLE MOST IMPORTANT USABILITY DECISION HERE is the "More options"
- * disclosure. The common path is six fields; the complete path is fourteen.
- * Hiding the eight rare ones behind one tap is what makes this form usable
- * one-handed, standing in a yard.
+ * WHAT IS VISIBLE WITHOUT OPENING ANYTHING is set by the owner, not by us:
+ * mode, date, invoice number, quantity, item details, base price, GST, full
+ * price, and the OD/Current bank tag. Those are what gets read off a docket on
+ * every single entry, so not one of them may sit behind a tap.
+ *
+ * Six genuinely occasional fields live under "More options" — reference tag,
+ * invoice date, discount, freight, the return-note flag, and notes. Discount
+ * and freight change the summary from in there, which is fine: the summary is
+ * live and sits above the disclosure, so the figures move where they can be
+ * seen.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -206,8 +212,14 @@ export function TransactionForm({
       </div>
 
       <Card className="space-y-4">
-        {/* Three short controls across, even at 360px, because they are short. */}
-        <div className="grid grid-cols-3 gap-3">
+        {/*
+          THE HEADER BLOCK — what the owner reads off a docket, in that order,
+          and what must be answerable without opening anything: mode, date,
+          invoice number, GST rate, and the bank tag. Two per row rather than
+          four across, because an invoice number and a date both need width and
+          the target is a 360px phone.
+        */}
+        <div className="grid grid-cols-2 gap-3">
           <Labeled label="Mode">
             <select
               className={inputCls}
@@ -219,18 +231,6 @@ export function TransactionForm({
             </select>
           </Labeled>
 
-          <Field label="GST %" error={errors.gstRate}>
-            {({ id }) => (
-              <input
-                id={id}
-                className={`${inputCls} tnum`}
-                inputMode="decimal"
-                value={form.gstRate}
-                onChange={(e) => update({ gstRate: e.target.value })}
-              />
-            )}
-          </Field>
-
           <Field label="Date" error={errors.entryDate}>
             {({ id, describedBy }) => (
               <input
@@ -241,6 +241,29 @@ export function TransactionForm({
                 value={form.entryDate}
                 max={todayIST()}
                 onChange={(e) => update({ entryDate: e.target.value })}
+              />
+            )}
+          </Field>
+
+          <Field label="Invoice no." hint="Optional">
+            {({ id }) => (
+              <input
+                id={id}
+                className={inputCls}
+                value={form.invoiceNo}
+                onChange={(e) => update({ invoiceNo: e.target.value })}
+              />
+            )}
+          </Field>
+
+          <Field label="GST %" error={errors.gstRate} hint="0–100">
+            {({ id }) => (
+              <input
+                id={id}
+                className={`${inputCls} tnum`}
+                inputMode="decimal"
+                value={form.gstRate}
+                onChange={(e) => update({ gstRate: e.target.value })}
               />
             )}
           </Field>
@@ -358,17 +381,41 @@ export function TransactionForm({
         Add line
       </Button>
 
-      <Field label="Reference tag" hint="Your own label — the one you actually search by.">
-        {({ id }) => (
-          <input
-            id={id}
-            className={inputCls}
-            placeholder="ASH 39"
-            value={form.referenceTag}
-            onChange={(e) => update({ referenceTag: e.target.value })}
-          />
+      {/*
+        The live summary sits directly under the lines it summarises, and ABOVE
+        the disclosure — base price, GST and the full price are three of the
+        figures the owner checks on every entry, so none of them may be behind
+        a tap. Discount and freight still live inside "More options"; they
+        change these figures live from there, which is the point of computing
+        this through the same `transactionTotals` the server posts with
+        (FR-T4). No surprises on save.
+      */}
+      <div className={`${panelCls} space-y-1`} aria-live="polite">
+        <Row label="Base price" value={<Money paise={totals.baseTotalPaise} />} />
+        {form.discountPaise !== null && form.discountPaise !== 0 && (
+          // "Less discount" carrying a POSITIVE figure — the interface never
+          // shows a bare minus sign (§10.8).
+          <Row label="Less discount" value={<Money paise={form.discountPaise} />} />
         )}
-      </Field>
+        {form.freightPaise !== null && form.freightPaise !== 0 && (
+          <Row label="Freight" value={<Money paise={form.freightPaise} />} />
+        )}
+        <Row
+          label={`GST ${form.gstRate || 0}%`}
+          // §8.3 — a zero rate shows an em dash, not ₹0.00. The two mean
+          // different things and the owner needs to tell them apart.
+          value={Number(form.gstRate) === 0 ? '—' : <Money paise={totals.gstAmountPaise} />}
+        />
+        {totals.roundOffPaise !== 0 && (
+          <Row label="Round off" value={<Money paise={totals.roundOffPaise} />} />
+        )}
+        <div className="flex items-center justify-between border-t border-outline-variant pt-1">
+          <span className="font-semibold">Full price</span>
+          <span className="font-semibold">
+            <Money paise={totals.grandTotalPaise} />
+          </span>
+        </div>
+      </div>
 
       <button
         type="button"
@@ -387,13 +434,14 @@ export function TransactionForm({
       {showMore && (
         <div className={`${panelCls} space-y-4`}>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Invoice no." hint="Optional">
+            <Field label="Reference tag" hint="Your own label">
               {({ id }) => (
                 <input
                   id={id}
                   className={inputCls}
-                  value={form.invoiceNo}
-                  onChange={(e) => update({ invoiceNo: e.target.value })}
+                  placeholder="ASH 39"
+                  value={form.referenceTag}
+                  onChange={(e) => update({ referenceTag: e.target.value })}
                 />
               )}
             </Field>
@@ -454,34 +502,6 @@ export function TransactionForm({
           </Field>
         </div>
       )}
-
-      {/* The live summary — no surprises on save (§10.1, FR-T4). */}
-      <div className={`${panelCls} space-y-1`} aria-live="polite">
-        <Row label="Base total" value={<Money paise={totals.baseTotalPaise} />} />
-        {form.discountPaise !== null && form.discountPaise !== 0 && (
-          // "Less discount" carrying a POSITIVE figure — the interface never
-          // shows a bare minus sign (§10.8).
-          <Row label="Less discount" value={<Money paise={form.discountPaise} />} />
-        )}
-        {form.freightPaise !== null && form.freightPaise !== 0 && (
-          <Row label="Freight" value={<Money paise={form.freightPaise} />} />
-        )}
-        <Row
-          label={`GST ${form.gstRate || 0}%`}
-          // §8.3 — a zero rate shows an em dash, not ₹0.00. The two mean
-          // different things and the owner needs to tell them apart.
-          value={Number(form.gstRate) === 0 ? '—' : <Money paise={totals.gstAmountPaise} />}
-        />
-        {totals.roundOffPaise !== 0 && (
-          <Row label="Round off" value={<Money paise={totals.roundOffPaise} />} />
-        )}
-        <div className="flex items-center justify-between border-t border-outline-variant pt-1">
-          <span className="font-semibold">Total amount</span>
-          <span className="font-semibold">
-            <Money paise={totals.grandTotalPaise} />
-          </span>
-        </div>
-      </div>
 
       {failure && (
         <p role="alert" className="text-body-md text-negative">

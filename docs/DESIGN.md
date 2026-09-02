@@ -383,18 +383,18 @@ on macOS.
 
 ## 13. Where the design system is applied
 
-| Screen             | File                                | Notes                                                                                  |
-| ------------------ | ----------------------------------- | -------------------------------------------------------------------------------------- |
-| Login              | `screens/Auth.tsx`                  | The only page outside the shell; the split navy/form panel and the one decorative glow |
-| Home               | `screens/Home.tsx`                  | Filled/outlined action-card pair, then the dealer roster                               |
-| Dealer list        | `screens/Home.tsx` (`DealerRoster`) | One component, three uses: all / suppliers / buyers; search debounced 200 ms           |
-| Dealer detail      | `screens/DealerDetail.tsx`          | Balance headline, filters, ledger rows, void                                           |
-| Transaction form   | `screens/TransactionForm.tsx`       | Line sub-cards, "More options" disclosure, live summary                                |
-| Payment form       | `screens/PaymentForm.tsx`           | Plain-language direction, bank tag in the neutral pair                                 |
-| Entry detail sheet | `screens/EntryEdit.tsx`             | Figures as text, never as inputs                                                       |
-| All transactions   | `screens/Home.tsx`                  | Filters and export                                                                     |
-| Audit log          | `screens/Auth.tsx`                  | Expand-in-place before/after JSON                                                      |
-| Account            | `screens/Auth.tsx`                  | `max-w-xl` — the only constrained measure in the app                                   |
+| Screen             | File                                | Notes                                                                                                                 |
+| ------------------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Login              | `screens/Auth.tsx`                  | The only page outside the shell; the split navy/form panel and the one decorative glow                                |
+| Home               | `screens/Home.tsx`                  | Filled/outlined action-card pair, then the dealer roster                                                              |
+| Dealer list        | `screens/Home.tsx` (`DealerRoster`) | One component, three uses: all / suppliers / buyers; search debounced 200 ms                                          |
+| Dealer detail      | `screens/DealerDetail.tsx`          | Balance headline, filters, ledger rows, void                                                                          |
+| Transaction form   | `screens/TransactionForm.tsx`       | Header block (mode, date, invoice no., GST, bank tag), line sub-cards, live summary, then a "More options" disclosure |
+| Payment form       | `screens/PaymentForm.tsx`           | Plain-language direction, bank tag in the neutral pair                                                                |
+| Entry detail sheet | `screens/EntryEdit.tsx`             | Figures as text, never as inputs                                                                                      |
+| All transactions   | `screens/Home.tsx`                  | Filters and export                                                                                                    |
+| Audit log          | `screens/Auth.tsx`                  | Expand-in-place before/after JSON                                                                                     |
+| Account            | `screens/Auth.tsx`                  | `max-w-xl` — the only constrained measure in the app                                                                  |
 
 ---
 
@@ -415,6 +415,15 @@ sign. The running balance beneath keeps its own icon and words.
 carries an edit form; a form that opens inside a scrolling list row is harder to
 use one-handed than a bottom sheet, and the sheet is already in the component
 library. The audit log _does_ expand in place, because it is read-only.
+
+**4. The transaction form's disclosure line is drawn where the owner drew it.**
+The source spec put invoice no. and invoice date inside "More options" and gave
+the reference tag its own prominent field. The owner's actual reading order off
+a docket is mode, date, invoice number, quantity, item details, base price, GST,
+full price, bank account — so all of those are visible without opening
+anything, the live summary sits _above_ the disclosure rather than below it, and
+the reference tag moved down into it. Discount and freight stay inside and
+change the summary from there, which is the point of the summary being live.
 
 **Two things not to change, even though simplification might tempt you:**
 
