@@ -171,7 +171,16 @@ function Header({
         >
           <Landmark size={18} />
         </span>
-        <span className="truncate text-headline-sm text-primary">ASH Overseas</span>
+        {/*
+          The wordmark is dropped below `sm`. At 360px it truncated to
+          "ASH Ov...", which is worse than no wordmark at all: it costs the
+          width the four controls beside it need, and an ellipsed brand looks
+          broken rather than compact. The mark carries the identity, and the
+          tab bar says which screen you are on.
+        */}
+        <span className="hidden truncate text-headline-sm text-primary sm:inline">
+          ASH Overseas
+        </span>
       </span>
 
       <h1 className="hidden min-w-0 flex-1 truncate text-headline-sm text-on-surface lg:block">

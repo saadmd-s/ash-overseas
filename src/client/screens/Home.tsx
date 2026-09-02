@@ -51,29 +51,38 @@ import { EntryEditDialog } from './EntryEdit';
 export function Home({ navigate }: { navigate: (path: string) => void }) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
+      {/*
+        The icon sits ABOVE the word rather than beside it.
+
+        Side by side, these two cards are about 150px wide at 360px. "Purchase"
+        at headline-md is ~110px of that, and a 28px icon plus padding does not
+        fit in what is left — the icon ended up sitting on top of the word.
+        Stacking removes the competition for width entirely, and the type steps
+        up to headline-md only once there is room for it.
+      */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
         <button
           type="button"
           onClick={() => navigate('/purchase')}
-          className="flex items-center justify-between rounded-xl bg-primary p-5 text-on-primary transition-all hover:opacity-90 active:scale-[0.98]"
+          className="flex flex-col gap-3 rounded-xl bg-primary p-4 text-left text-on-primary transition-all hover:opacity-90 active:scale-[0.98] sm:p-5"
         >
-          <span className="text-left">
+          <ShoppingCart size={24} aria-hidden="true" />
+          <span>
             <span className="block text-label-caps uppercase opacity-70">Record a</span>
-            <span className="block text-headline-md font-bold">Purchase</span>
+            <span className="block text-headline-sm font-bold sm:text-headline-md">Purchase</span>
           </span>
-          <ShoppingCart size={28} aria-hidden="true" />
         </button>
 
         <button
           type="button"
           onClick={() => navigate('/sale')}
-          className="flex items-center justify-between rounded-xl border-2 border-primary p-5 text-primary transition-all hover:bg-surface-container active:scale-[0.98]"
+          className="flex flex-col gap-3 rounded-xl border-2 border-primary p-4 text-left text-primary transition-all hover:bg-surface-container active:scale-[0.98] sm:p-5"
         >
-          <span className="text-left">
+          <Tag size={24} aria-hidden="true" />
+          <span>
             <span className="block text-label-caps uppercase opacity-70">Record a</span>
-            <span className="block text-headline-md font-bold">Sale</span>
+            <span className="block text-headline-sm font-bold sm:text-headline-md">Sale</span>
           </span>
-          <Tag size={28} aria-hidden="true" />
         </button>
       </div>
 
@@ -141,8 +150,12 @@ export function DealerRoster({
   return (
     <div className="space-y-3">
       {searchable && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative sm:max-w-xs sm:flex-1">
+        // One row, not two. Stacked, the button got a line of its own for a
+        // single control — wasted vertical space on the screen that has least
+        // of it. The label collapses to the icon below `sm`; `aria-label`
+        // keeps the button named either way.
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 sm:max-w-xs">
             <Search
               size={18}
               aria-hidden="true"
@@ -159,11 +172,13 @@ export function DealerRoster({
           </div>
           <Button
             variant="outline"
-            className="flex items-center gap-2 self-start"
+            aria-label="New dealer"
+            title="New dealer"
+            className="flex shrink-0 items-center gap-2 py-2.5"
             onClick={() => navigate('/dealers/new')}
           >
             <Plus size={18} aria-hidden="true" />
-            New dealer
+            <span className="hidden sm:inline">New dealer</span>
           </Button>
         </div>
       )}
@@ -178,7 +193,21 @@ export function DealerRoster({
               ? 'No dealers match that search.'
               : type
                 ? `No ${type === 'supplier' ? 'suppliers' : 'buyers'} yet.`
-                : 'No dealers yet. Add your first one.'
+                : 'No dealers yet.'
+          }
+          // "Add your first one" was an instruction with nothing to press.
+          // The empty state carries the action itself.
+          action={
+            !debounced && (
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={() => navigate('/dealers/new')}
+              >
+                <Plus size={18} aria-hidden="true" />
+                Add your first dealer
+              </Button>
+            )
           }
         />
       )}

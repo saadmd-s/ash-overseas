@@ -455,7 +455,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="grid place-items-center gap-2 rounded-xl border border-dashed border-outline-variant py-12 text-center text-on-surface-variant">
+    <div className="grid place-items-center gap-3 rounded-xl border border-dashed border-outline-variant px-4 py-10 text-center text-on-surface-variant">
       {icon}
       <p>{message}</p>
       {action}
