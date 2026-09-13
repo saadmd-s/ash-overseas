@@ -117,6 +117,30 @@ export function modeMatcher(
   };
 }
 
+/**
+ * The `type` filter (goods or money), resolved the same way as `mode`: a
+ * cancellation row belongs with the entry it cancels.
+ *
+ * Comparing the row's own `source_type` dropped every cancellation from a
+ * "payments only" view while keeping the deleted payment itself — and without
+ * its cancellation beside it, nothing on the screen said the payment had been
+ * deleted. A deleted entry misread as live is the failure this screen exists to
+ * prevent.
+ */
+export function typeMatcher(
+  entries: ModeFilterableEntry[],
+  type: 'transaction' | 'payment',
+): (entry: ModeFilterableEntry) => boolean {
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  return (entry) => {
+    const origin =
+      entry.sourceType === 'reversal' && entry.reversesEntryId !== null
+        ? (byId.get(entry.reversesEntryId) ?? null)
+        : entry;
+    return origin?.sourceType === type;
+  };
+}
+
 // ---------------------------------------------------------------------------
 
 /** Every ledger row for a dealer, enriched with its source record. */
@@ -155,6 +179,11 @@ export async function dealerLedgerRows(
     ? modeMatcher(entries, new Map(transactions.map((t) => [t.id, t.mode])), mode)
     : null;
 
+  const matchesType =
+    filters.type === 'transaction' || filters.type === 'payment'
+      ? typeMatcher(entries, filters.type)
+      : null;
+
   const rows: LedgerExportRow[] = [];
 
   for (const entry of entries) {
@@ -164,7 +193,7 @@ export async function dealerLedgerRows(
     if (filters.from && entry.entryDate < filters.from) continue;
     if (filters.to && entry.entryDate > filters.to) continue;
     if (filters.bankAccount && entry.bankAccount !== filters.bankAccount) continue;
-    if (filters.type && entry.sourceType !== filters.type) continue;
+    if (matchesType && !matchesType(entry)) continue;
     if (matchesMode && !matchesMode(entry)) continue;
 
     const base = {

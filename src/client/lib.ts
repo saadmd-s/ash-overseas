@@ -246,3 +246,40 @@ export async function downloadExport(path: string, format: 'xlsx' | 'csv'): Prom
  */
 export const REFERENCE_TAG_HINT =
   "Your own short label for this entry, such as a lot, lorry or file number. If filled in, it is shown in the dealer's history instead of the invoice number.";
+
+// ---------------------------------------------------------------------------
+// Entries, in the owner's words
+// ---------------------------------------------------------------------------
+
+/**
+ * The chip text for a ledger row. The stored labels are the SRS's own
+ * (Received, Paid, Opening, Reversal); these are what the owner reads.
+ */
+export function entryLabel(label: string | null): string {
+  switch (label) {
+    case 'Received':
+      return 'Money received';
+    case 'Paid':
+      return 'Money paid';
+    case 'Opening':
+      return 'Starting balance';
+    case 'Reversal':
+      return 'Cancels a deleted entry';
+    default:
+      return label ?? 'Entry';
+  }
+}
+
+/**
+ * "Delete" an entry. Underneath this is a VOID — the entry is flagged, an equal
+ * and opposite entry cancels it, and an audit row records it — so nothing is
+ * ever removed and every balance stays the sum of what is kept (SRS §15.7).
+ */
+export function deleteEntry(sourceType: 'transaction' | 'payment', sourceId: number) {
+  return api.post(
+    sourceType === 'transaction'
+      ? `/api/transactions/${sourceId}/void`
+      : `/api/payments/${sourceId}/void`,
+    {},
+  );
+}

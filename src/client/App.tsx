@@ -14,14 +14,7 @@ import { AllTransactions, DealerList, Home, NewDealer } from './screens/Home';
 import { DealerDetail } from './screens/DealerDetail';
 import { TransactionForm } from './screens/TransactionForm';
 import { PaymentForm } from './screens/PaymentForm';
-import {
-  AuditView,
-  GateDisabledBanner,
-  Login,
-  Settings,
-  signOut,
-  type AuthState,
-} from './screens/Auth';
+import { AuditView, GateDisabledBanner, Login, Settings, type AuthState } from './screens/Auth';
 
 type Route =
   | { name: 'home' }
@@ -75,13 +68,13 @@ function chromeFor(route: Route): { nav: NavKey; title: string } {
     case 'transaction':
       return { nav: 'dealers', title: 'New transaction' };
     case 'payment':
-      return { nav: 'dealers', title: 'Add money' };
+      return { nav: 'dealers', title: 'Payment' };
     case 'all':
       return { nav: 'other', title: 'All transactions' };
     case 'settings':
       return { nav: 'other', title: 'Account' };
     case 'audit':
-      return { nav: 'other', title: 'Audit log' };
+      return { nav: 'other', title: 'Activity log' };
   }
 }
 
@@ -166,10 +159,8 @@ function SignedIn({ auth, onAuthChanged }: { auth: AuthState; onAuthChanged: () 
       active={nav}
       title={title}
       username={auth.username}
-      auditActive={route.name === 'audit'}
-      accountActive={route.name === 'settings'}
+      accountActive={route.name === 'settings' || route.name === 'audit'}
       navigate={navigate}
-      onSignOut={() => void signOut()}
     >
       <Screen
         route={route}
@@ -212,7 +203,7 @@ function Screen({
       return <AllTransactions />;
 
     case 'settings':
-      return <Settings auth={auth} onChanged={onAuthChanged} />;
+      return <Settings auth={auth} onChanged={onAuthChanged} navigate={navigate} />;
 
     case 'audit':
       return <AuditView />;

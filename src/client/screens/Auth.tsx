@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ChevronDown,
+  ChevronRight,
   KeyRound,
   Landmark,
   Lock,
@@ -236,7 +237,15 @@ export function GateDisabledBanner() {
  * `max-w-xl` — the only constrained measure in the application, because this is
  * a settings form and a full-width text field at 1440px is unusable.
  */
-export function Settings({ auth, onChanged }: { auth: AuthState; onChanged: () => void }) {
+export function Settings({
+  auth,
+  onChanged,
+  navigate,
+}: {
+  auth: AuthState;
+  onChanged: () => void;
+  navigate: (path: string) => void;
+}) {
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <div>
@@ -256,6 +265,23 @@ export function Settings({ auth, onChanged }: { auth: AuthState; onChanged: () =
           </p>
         </div>
       )}
+
+      <Card>
+        <button
+          type="button"
+          onClick={() => navigate('/audit')}
+          className="flex w-full items-center gap-3 text-left"
+        >
+          <ScrollText size={20} aria-hidden="true" className="shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-headline-sm text-on-surface">Activity log</span>
+            <span className="block text-body-md text-on-surface-variant">
+              Everything added, changed or deleted, and every sign-in.
+            </span>
+          </span>
+          <ChevronRight size={18} aria-hidden="true" className="text-on-surface-variant" />
+        </button>
+      </Card>
 
       <CredentialForm
         icon={<KeyRound size={20} aria-hidden="true" />}
@@ -429,11 +455,19 @@ interface AuditEntry {
 }
 
 const ACTION_LABEL: Record<string, string> = {
-  create: 'Created',
-  void: 'Voided',
-  edit: 'Edited',
-  login: 'Sign-in',
-  credential_change: 'Credentials changed',
+  create: 'Added',
+  void: 'Deleted',
+  edit: 'Changed',
+  login: 'Signed in',
+  credential_change: 'Password or username changed',
+};
+
+/** What each row is about, in words — never a table name. */
+const ENTITY_LABEL: Record<string, string> = {
+  transactions: 'Purchase or sale',
+  payments: 'Payment',
+  dealers: 'Dealer',
+  app_credentials: 'Your account',
 };
 
 /** Read-only. There is no route anywhere that edits or deletes an audit row. */
@@ -447,7 +481,7 @@ export function AuditView() {
     api
       .get<{ entries: AuditEntry[] }>('/api/audit')
       .then((d) => setEntries(d.entries))
-      .catch(() => setError('Could not load the audit log.'));
+      .catch(() => setError('Could not load the activity log.'));
   }, []);
 
   useEffect(load, [load]);
@@ -457,16 +491,16 @@ export function AuditView() {
       <div>
         <h1 className="flex items-center gap-2 text-headline-md text-primary">
           <ScrollText size={22} aria-hidden="true" />
-          Audit log
+          Activity log
         </h1>
         <p className="text-body-md text-on-surface-variant">
-          Every create, void, edit and sign-in, newest first. Nothing here can be changed or
-          removed.
+          Everything added, changed or deleted, and every sign-in, newest first. This list cannot be
+          changed.
         </p>
       </div>
 
       {error && <ErrorState message={error} onRetry={load} />}
-      {!entries && !error && <Loading what="the audit log" />}
+      {!entries && !error && <Loading what="the activity log" />}
       {entries?.length === 0 && (
         <EmptyState
           icon={<ScrollText size={28} aria-hidden="true" />}
@@ -493,14 +527,11 @@ export function AuditView() {
                       <Chip tone={e.action === 'void' ? 'negative' : 'neutral'}>
                         {ACTION_LABEL[e.action] ?? e.action}
                       </Chip>
-                      <span className="truncate text-body-md">
-                        {e.entity}
-                        {e.entityId !== null && ` #${e.entityId}`}
-                      </span>
+                      <span className="text-body-md">{ENTITY_LABEL[e.entity] ?? e.entity}</span>
                     </span>
-                  </span>
-                  <span className="shrink-0 text-label-caps uppercase text-on-surface-variant">
-                    {formatInstant(e.at)}
+                    <span className="block text-body-md text-on-surface-variant">
+                      {formatInstant(e.at)}
+                    </span>
                   </span>
                   {hasDetail && (
                     <ChevronDown
@@ -515,8 +546,8 @@ export function AuditView() {
 
                 {expanded && hasDetail && (
                   <div className="grid gap-3 border-t border-outline-variant bg-surface-container-low p-4 sm:grid-cols-2">
-                    <JsonBlock title="Before" json={e.beforeJson} />
-                    <JsonBlock title="After" json={e.afterJson} />
+                    <JsonBlock title="Before (technical detail)" json={e.beforeJson} />
+                    <JsonBlock title="After (technical detail)" json={e.afterJson} />
                   </div>
                 )}
               </li>

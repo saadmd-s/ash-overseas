@@ -127,15 +127,15 @@ describe('Phase 2 gate — enter, void, export, reconcile', () => {
     expect(sheet.rows).toHaveLength(3);
 
     const statuses = sheet.rows.map((r) => r[20]);
-    expect(statuses).toContain('VOIDED');
-    expect(statuses).toContain('REVERSAL');
+    expect(statuses).toContain('Deleted');
+    expect(statuses).toContain('Cancels a deleted entry');
 
     // The voided row is marked for strike-through, not removed (§11.4).
     expect(sheet.struckRows.length).toBe(1);
 
     // And the reversal sits on the row after the entry it undoes.
-    const voidedIndex = statuses.indexOf('VOIDED');
-    expect(statuses[voidedIndex + 1]).toBe('REVERSAL');
+    const voidedIndex = statuses.indexOf('Deleted');
+    expect(statuses[voidedIndex + 1]).toBe('Cancels a deleted entry');
   });
 
   it('still reconciles after the void', async () => {

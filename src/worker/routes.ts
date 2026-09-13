@@ -32,7 +32,7 @@ import {
   ledgerQuerySchema,
   patchTransactionSchema,
 } from './schemas';
-import { modeMatcher } from './export-query';
+import { modeMatcher, typeMatcher } from './export-query';
 import { fail, flatten, idParam } from './http';
 import type { Env } from './index';
 
@@ -143,11 +143,13 @@ api.get('/dealers/:id/ledger', async (c) => {
     matchesMode = modeMatcher(all, new Map(modes.map((t) => [t.id, t.mode])), f.mode);
   }
 
+  const matchesType = f.type ? typeMatcher(all, f.type) : null;
+
   const filtered = all.filter((e) => {
     if (f.from && e.entryDate < f.from) return false;
     if (f.to && e.entryDate > f.to) return false;
     if (f.bankAccount && e.bankAccount !== f.bankAccount) return false;
-    if (f.type && e.sourceType !== f.type) return false;
+    if (matchesType && !matchesType(e)) return false;
     if (matchesMode && !matchesMode(e)) return false;
     return true;
   });
@@ -177,7 +179,11 @@ async function assertPostableDealer(
 
   if (!rows[0]) return { code: 'NOT_FOUND', message: 'No such dealer.', status: 404 };
   if (rows[0].isArchived) {
-    return { code: 'DEALER_ARCHIVED', message: 'That dealer is archived.', status: 409 };
+    return {
+      code: 'DEALER_ARCHIVED',
+      message: 'That dealer has been deleted. Restore them first to add entries.',
+      status: 409,
+    };
   }
   return null;
 }

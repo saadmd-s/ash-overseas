@@ -67,7 +67,7 @@ and local-only — see [Things that will bite you](#things-that-will-bite-you).
 | `pnpm auth:setup`        | Write the login ([Logins](#logins-and-passwords))       |
 | `pnpm deploy:prod`       | Deploy to production                                    |
 
-The suite should read **215 passing**. If a number here has drifted, the count
+The suite should read **216 passing**. If a number here has drifted, the count
 in [README](../README.md) and [CLAUDE.md](../CLAUDE.md) is stale, not wrong —
 check what changed.
 
@@ -307,16 +307,19 @@ change it on stays signed in. That is the tool to reach for if a phone is lost.
 
 ## Fixing a wrong entry
 
-**Nothing is ever deleted.** A correction is a **void**: the source is flagged,
-an equal and opposite reversing entry is posted against it, the dealer's ledger
-is replayed, and an audit row is written. Both the original and the reversal stay
-visible, and both appear in exports, flagged.
+**Nothing is ever deleted**, even though the owner's button says **Delete**.
+Underneath, a delete is a **void**: the source is flagged, an equal and opposite
+reversing entry is posted against it, the dealer's ledger is replayed, and an
+audit row is written. The screen hides the pair by default ("Show deleted
+entries" reveals it); exports always include both, marked "Deleted" and "Cancels
+a deleted entry". Deleting a **dealer** archives them; "Show deleted dealers" on
+the Dealers screen finds them again, and their page has Restore.
 
 - Wrong **amount, date, quantity, rate, GST rate, discount, freight, dealer or
-  mode** → void it and re-enter. There is no edit path for these, on purpose.
+  mode** → delete it and re-enter. There is no edit path for these, on purpose.
 - Wrong **note, reference tag, or item-name spelling** → these are non-financial
   and may be edited in place; the edit is audited. Open the entry from the dealer
-  screen or the all-transactions list — **Details** — and change the wording
+  screen or the all-transactions list — **View or edit** — and change the wording
   there. The figures on that sheet are text, not fields: there is deliberately
   nothing to type an amount into.
 
@@ -330,7 +333,7 @@ every void and after any back-dated insert. `checkLedgerIntegrity()` verifies th
 stored running balances against a fresh replay without changing anything — that
 is the one to reach for if a balance ever looks wrong.
 
-The **Audit log** screen shows every create, void, edit and sign-in, newest
+The **Activity log** (Account → Activity log) shows every create, delete, edit and sign-in, newest
 first. It is read-only: no route anywhere updates or deletes an audit row.
 
 ---
@@ -351,10 +354,10 @@ No row means the setup script was never run against this database. Run
 `pnpm auth:setup --env production`.
 
 **"A balance looks wrong."** Do not edit the database. Run the integrity check,
-read the dealer's history, and find the entry — then void it. If the stored
+read the dealer's history, and find the entry — then delete it. If the stored
 balance disagrees with a replay, that is a bug worth reporting with the dealer id.
 
-**"I need to see what happened."** The Audit log screen, then Cloudflare's Workers
+**"I need to see what happened."** The Activity log (on the Account page), then Cloudflare's Workers
 logs (`observability` is enabled). Note that **no money or dealer detail is ever
 logged** (§16.3), by design — the audit table is the record, not the logs.
 

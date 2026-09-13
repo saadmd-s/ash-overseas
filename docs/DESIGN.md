@@ -400,14 +400,16 @@ on macOS.
 
 ## 14. Deviations from the source specification
 
-Three, all deliberate, all recorded in the code at the point they apply.
+All deliberate, all recorded in the code at the point they apply.
 
 **1. No `+` / `−` prefix on ledger movement amounts.** The source spec's ledger
 row draws the movement as `+₹2,69,323.00`. SRS §10.8 forbids it outright — "the
 user never sees a bare `+`/`−`" — and where the two disagree the SRS wins. The
-direction is carried instead by the label chip (SALE / PURCHASE / RECEIPT /
-PAYMENT / REVERSAL) and by colour, which is the same information without the
-sign. The running balance beneath keeps its own icon and words.
+direction is carried instead by the label chip (SALE / PURCHASE / MONEY RECEIVED /
+MONEY PAID) and by the running balance beneath, which keeps its own icon and
+words. The movement amount itself is plain `on-surface` since the plain-language
+review (item 5): green and red on it meant "moves the balance towards the dealer
+owing / you owing", so money _received_ showed red and read as a loss.
 
 **2. The primary action is "New dealer", not "New transaction".** See §7.
 
@@ -425,9 +427,30 @@ anything, the live summary sits _above_ the disclosure rather than below it, and
 the reference tag moved down into it. Discount and freight stay inside and
 change the summary from there, which is the point of the summary being live.
 
+**5. Written for a non-technical, elderly owner.** A review pass after the owner
+found "void" confusing. The rules it set:
+
+- **The owner's word is "delete".** Underneath it is still a void — flagged,
+  cancelled by an equal and opposite entry, audited, nothing removed. The
+  interface says "Delete", "Deleted", and "Cancels a deleted entry"; never void,
+  reversal, or reversing entry. Exports use the same words in the Status and Type
+  cells. A deleted dealer is archived.
+- **Deleted entries are hidden by default**, with a "Show deleted entries (N)"
+  toggle — but a deleted entry and its cancellation are hidden only as a pair,
+  and only when no other entry sits between them in `(entry_date, id)` order.
+  Otherwise a visible running balance would include an amount the owner cannot
+  see. See `hiddenIds` in DealerDetail.tsx.
+- **Words on buttons, not icons.** Delete is a red text button on every row, not
+  a bare ban icon. The header carries only Account and New dealer; the audit log
+  (now "Activity log") and Sign out moved to the Account page.
+- **One button per thing to record**: Purchase, Sale, Payment on the dealer page.
+- **No technical vocabulary in hints** ("tag", "splits the balance", "mode",
+  "line", "posts the opposite way", table names in the activity log).
+
 **Two things not to change, even though simplification might tempt you:**
 
-- **The three-signal void treatment** (chip + strike-through + dimming). It
+- **The three-signal deleted-row treatment** (chip + strike-through + dimming),
+  whenever a deleted row is shown. It
   matters _more_ in a single-balance ledger, not less — there is no second
   account to cross-check against.
 - **Tabular figures on every amount.** The export feature makes column alignment

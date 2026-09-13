@@ -208,7 +208,7 @@ describe('Scenario E through D1 (§6.5)', () => {
   it('refuses to void the same record twice', async () => {
     const tx = await sale('2026-07-09', 9510, 2400);
     await voidTransaction(db, tx.id);
-    await expect(voidTransaction(db, tx.id)).rejects.toThrow(/already voided/i);
+    await expect(voidTransaction(db, tx.id)).rejects.toThrow(/already been deleted/i);
   });
 
   it('never hard-deletes a financial row', async () => {

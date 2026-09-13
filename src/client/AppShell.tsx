@@ -16,15 +16,12 @@ import type { ReactNode } from 'react';
 import {
   Home as HomeIcon,
   Landmark,
-  LogOut,
   Plus,
-  ScrollText,
   ShoppingCart,
   Tag,
   UserCircle2,
   Users,
 } from 'lucide-react';
-import { IconButton } from './ui';
 
 export type NavKey = 'home' | 'purchase' | 'sale' | 'dealers' | 'other';
 
@@ -39,19 +36,15 @@ export function AppShell({
   active,
   title,
   username,
-  auditActive,
   accountActive,
   navigate,
-  onSignOut,
   children,
 }: {
   active: NavKey;
   title: string;
   username: string | null;
-  auditActive?: boolean;
   accountActive?: boolean;
   navigate: (path: string) => void;
-  onSignOut: () => void;
   children: ReactNode;
 }) {
   return (
@@ -62,10 +55,8 @@ export function AppShell({
         <Header
           title={title}
           username={username}
-          auditActive={auditActive}
           accountActive={accountActive}
           navigate={navigate}
-          onSignOut={onSignOut}
         />
 
         {/*
@@ -142,24 +133,22 @@ function Sidebar({ active, navigate }: { active: NavKey; navigate: (path: string
 // ---------------------------------------------------------------------------
 
 /**
- * Four controls, right-aligned. Each collapses progressively rather than
- * disappearing: the username hides below `sm`, the New button drops to a bare
- * `+`. Nothing becomes unreachable on a narrow screen.
+ * Two controls, both with words on them: Account and New dealer.
+ *
+ * There used to be four, two of them bare icons — an audit-log scroll and a
+ * sign-out arrow — which the owner could not tell apart and could hit by
+ * accident. Both now live on the Account page, one tap away and labelled.
  */
 function Header({
   title,
   username,
-  auditActive,
   accountActive,
   navigate,
-  onSignOut,
 }: {
   title: string;
   username: string | null;
-  auditActive?: boolean;
   accountActive?: boolean;
   navigate: (path: string) => void;
-  onSignOut: () => void;
 }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-outline-variant bg-surface-bright px-4 lg:px-8">
@@ -188,10 +177,6 @@ function Header({
       </h1>
 
       <div className="ml-auto flex items-center gap-2">
-        <IconButton label="Audit log" active={auditActive} onClick={() => navigate('/audit')}>
-          <ScrollText size={18} />
-        </IconButton>
-
         <button
           type="button"
           onClick={() => navigate('/settings')}
@@ -202,14 +187,9 @@ function Header({
           }`}
         >
           <UserCircle2 size={18} aria-hidden="true" />
-          <span className="hidden max-w-32 truncate sm:inline">{username ?? 'Account'}</span>
-          <span className="sr-only">Account settings</span>
+          <span className="max-w-32 truncate">Account</span>
+          {username && <span className="sr-only">, signed in as {username}</span>}
         </button>
-
-        {/* The only hover-to-red in the header, marking the destructive one. */}
-        <IconButton label="Sign out" className="hover:text-negative" onClick={onSignOut}>
-          <LogOut size={18} />
-        </IconButton>
 
         <button
           type="button"
@@ -217,8 +197,7 @@ function Header({
           className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90"
         >
           <Plus size={18} aria-hidden="true" />
-          <span className="hidden sm:inline">New dealer</span>
-          <span className="sr-only sm:hidden">New dealer</span>
+          New dealer
         </button>
       </div>
     </header>

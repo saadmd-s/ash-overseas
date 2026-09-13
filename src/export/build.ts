@@ -136,6 +136,20 @@ const LEDGER_HEADER = [
   'Notes',
 ];
 
+/**
+ * The owner's words for the Status and Type cells. Internally a correction is a
+ * "void" posted with a "reversal"; the owner deletes an entry, and the row that
+ * cancels it out is what makes the balance return. The stored flags are
+ * unchanged — only the text written into the spreadsheet is.
+ */
+const STATUS_TEXT: Record<string, string> = {
+  '': '',
+  VOIDED: 'Deleted',
+  REVERSAL: 'Cancels a deleted entry',
+};
+const statusText = (status: string) => STATUS_TEXT[status] ?? status;
+const typeText = (type: string) => (type === 'Reversal' ? 'Cancellation' : type);
+
 function buildDealerLedger(data: DealerLedgerExport, generatedAt: string): Sheet {
   const rows: Cell[][] = [];
   const struckRows: number[] = [];
@@ -144,7 +158,7 @@ function buildDealerLedger(data: DealerLedgerExport, generatedAt: string): Sheet
     if (r.status === 'VOIDED') struckRows.push(i);
     rows.push([
       dateCell(r.entryDate),
-      r.type,
+      typeText(r.type),
       r.invoiceNo,
       r.reference,
       r.items,
@@ -166,7 +180,7 @@ function buildDealerLedger(data: DealerLedgerExport, generatedAt: string): Sheet
       // sign is acceptable.
       rupees(r.balancePaise),
       directionOf(r.balancePaise),
-      r.status,
+      statusText(r.status),
       r.notes,
     ]);
   });
@@ -228,7 +242,7 @@ function buildTransactions(data: TransactionsExport, generatedAt: string): Sheet
     rows.push([
       dateCell(r.entryDate),
       r.dealerName,
-      r.type,
+      typeText(r.type),
       r.invoiceNo,
       r.reference,
       r.items,
@@ -245,7 +259,7 @@ function buildTransactions(data: TransactionsExport, generatedAt: string): Sheet
       bankLabel(r.bankAccount),
       rupeesOrBlank(r.debitPaise),
       rupeesOrBlank(r.creditPaise),
-      r.status,
+      statusText(r.status),
       r.notes,
     ]);
   });

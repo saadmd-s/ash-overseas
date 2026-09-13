@@ -177,7 +177,7 @@ async function voidSource(
     .from(schema.ledgerEntries)
     .where(eq(schema.ledgerEntries.reversesEntryId, original.id))
     .limit(1);
-  if (alreadyReversed[0]) throw new Error('That record has already been voided.');
+  if (alreadyReversed[0]) throw new Error('That entry has already been deleted.');
 
   // The reversal is equal and opposite. Its running balance is provisional —
   // recomputeLedger below rewrites every balance from zero, which is what makes
@@ -202,7 +202,7 @@ async function voidSource(
       runningBalancePaise: provisional as unknown as number,
       bankAccount: original.bankAccount,
       label: 'Reversal',
-      description: `Reversal of ${opts.sourceType} #${opts.sourceId}`,
+      description: 'Cancels a deleted entry',
     }),
     opts.flagVoided,
     db.insert(schema.auditLog).values({
@@ -244,7 +244,7 @@ export async function voidTransaction(db: Db, transactionId: number): Promise<Vo
 
   const tx = rows[0];
   if (!tx) throw new Error('No such transaction.');
-  if (tx.isVoided) throw new Error('That transaction is already voided.');
+  if (tx.isVoided) throw new Error('That entry has already been deleted.');
 
   return voidSource(db, {
     sourceType: 'transaction',
@@ -273,7 +273,7 @@ export async function voidPayment(db: Db, paymentId: number): Promise<VoidResult
 
   const pay = rows[0];
   if (!pay) throw new Error('No such payment.');
-  if (pay.isVoided) throw new Error('That payment is already voided.');
+  if (pay.isVoided) throw new Error('That entry has already been deleted.');
 
   return voidSource(db, {
     sourceType: 'payment',

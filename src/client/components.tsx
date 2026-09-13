@@ -195,17 +195,24 @@ function renderPaise(paise: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Void confirmation — FR-A2
+// Delete confirmation — FR-A2
 // ---------------------------------------------------------------------------
 
 /**
  * "Voiding requires an explicit confirmation dialog that names the entry and
  * the amount." Both are in the prompt below, deliberately.
  *
+ * THE OWNER'S WORD IS "DELETE". Underneath it is still a void: the entry is
+ * flagged, an equal and opposite entry cancels it, and an audit row records it,
+ * so nothing is ever lost and the balance is always the sum of what is kept.
+ * "Void", "reversal" and "reversing entry" are accounting vocabulary the owner
+ * found confusing, and none of it changes what they need to decide here:
+ * whether this entry should stop counting.
+ *
  * Two equal-width buttons, destructive on the right, and the dialog cannot be
  * dismissed while the request is in flight.
  */
-export function VoidDialog({
+export function DeleteEntryDialog({
   entryLabel,
   amountPaise,
   busy,
@@ -219,24 +226,23 @@ export function VoidDialog({
   onCancel: () => void;
 }) {
   return (
-    <Modal title="Void this entry?" busy={busy} onClose={onCancel}>
+    <Modal title="Delete this entry?" busy={busy} onClose={onCancel}>
       <p className="mb-2 text-body-lg">
-        {entryLabel} — this posts an equal and opposite reversing entry for{' '}
+        {entryLabel} for{' '}
         <strong className="font-semibold">
           <Money paise={amountPaise} />
-        </strong>
-        .
+        </strong>{' '}
+        will be deleted and will no longer count in the balance.
       </p>
       <p className="mb-5 text-on-surface-variant">
-        Nothing is deleted. The original stays in the history, struck through, with its reversal
-        beside it.
+        A copy is kept for your records. You can still see it with “Show deleted entries”.
       </p>
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1 py-2.5" onClick={onCancel} disabled={busy}>
-          Cancel
+          Keep it
         </Button>
         <Button variant="destructive" className="flex-1" onClick={onConfirm} disabled={busy}>
-          {busy ? 'Voiding...' : 'Void entry'}
+          {busy ? 'Deleting...' : 'Delete'}
         </Button>
       </div>
     </Modal>
@@ -253,7 +259,7 @@ export function VoidDialog({
  * Outlined, never filled: export is secondary to entry, and the primary action
  * on any screen carrying this button is recording something new.
  */
-export function ExportMenu({ path, label = 'Export' }: { path: string; label?: string }) {
+export function ExportMenu({ path, label = 'Download' }: { path: string; label?: string }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,7 +286,7 @@ export function ExportMenu({ path, label = 'Export' }: { path: string; label?: s
     try {
       await downloadExport(path, format);
     } catch {
-      setError('Export failed. Nothing was downloaded.');
+      setError('The download did not work. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -303,7 +309,7 @@ export function ExportMenu({ path, label = 'Export' }: { path: string; label?: s
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-40 mt-1 w-44 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest"
+          className="absolute right-0 z-40 mt-1 w-56 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-lowest"
         >
           <button
             type="button"
@@ -312,7 +318,7 @@ export function ExportMenu({ path, label = 'Export' }: { path: string; label?: s
             onClick={() => void run('xlsx')}
           >
             <FileSpreadsheet size={18} aria-hidden="true" />
-            Excel (.xlsx)
+            Excel file
           </button>
           <button
             type="button"
@@ -321,7 +327,7 @@ export function ExportMenu({ path, label = 'Export' }: { path: string; label?: s
             onClick={() => void run('csv')}
           >
             <FileSpreadsheet size={18} aria-hidden="true" />
-            CSV
+            CSV file (other programs)
           </button>
         </div>
       )}

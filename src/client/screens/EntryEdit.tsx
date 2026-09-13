@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Trash2 } from 'lucide-react';
 import {
   api,
   formatDate,
@@ -77,10 +78,13 @@ const trimmedOrNull = (value: string): string | null => (value.trim() === '' ? n
 export function EntryEditDialog({
   transactionId,
   onSaved,
+  onDelete,
   onCancel,
 }: {
   transactionId: number;
   onSaved: (message: string) => void;
+  /** Offered on a live entry; the caller runs the confirmation. */
+  onDelete?: () => void;
   onCancel: () => void;
 }) {
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -141,12 +145,12 @@ export function EntryEditDialog({
     setSaveError(null);
     try {
       await api.patch(`/api/transactions/${tx.id}`, body);
-      onSaved('Entry updated. No amount was changed.');
+      onSaved('Changes saved.');
     } catch (error) {
       setSaveError(
         error instanceof RequestFailed
           ? error.detail.message
-          : 'Could not save that change. Nothing was altered.',
+          : 'Could not save that change. Nothing was changed.',
       );
     } finally {
       setSaving(false);
@@ -168,7 +172,7 @@ export function EntryEditDialog({
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip>{detail.transaction.bankAccount === 'od' ? 'OD' : 'Current'}</Chip>
-            {detail.transaction.isVoided && <Chip tone="negative">Voided</Chip>}
+            {detail.transaction.isVoided && <Chip tone="negative">Deleted</Chip>}
             <span className="text-body-md text-on-surface-variant">
               {formatDate(detail.transaction.entryDate)}
             </span>
@@ -176,21 +180,18 @@ export function EntryEditDialog({
 
           {detail.transaction.isVoided && (
             <p className="rounded-lg bg-negative-container p-3 text-body-md text-on-negative-container">
-              This entry is voided. Its reversal is in the history; editing the wording here does
-              not bring it back.
+              This entry has been deleted. It no longer counts in the balance and is kept only for
+              your records.
             </p>
           )}
 
           <Figures tx={detail.transaction} lines={detail.lines} />
 
           <div>
-            <h3 className="text-label-caps uppercase text-on-surface-variant">
-              What you can change
-            </h3>
+            <h3 className="text-label-caps uppercase text-on-surface-variant">Fix the wording</h3>
             <p className="mt-1 text-body-md text-on-surface-variant">
-              Wording only. To change a date, an amount, a quantity, a rate, the GST rate, the
-              dealer, or purchase/sale, void this entry and enter it again — that is what keeps the
-              history true.
+              You can correct the reference tag, item names and notes below. To change an amount,
+              date, quantity, rate or GST, delete this entry and add it again.
             </p>
           </div>
 
@@ -209,17 +210,16 @@ export function EntryEditDialog({
           {detail.lines.map((line) => (
             <label key={line.id} className="block space-y-1">
               <span className="text-label-caps uppercase text-on-surface-variant">
-                Item name — line {line.lineNo}
+                Item {line.lineNo} name
               </span>
               <input
                 className={inputCls}
                 value={itemNames[line.id] ?? ''}
                 onChange={(e) => setItemNames((names) => ({ ...names, [line.id]: e.target.value }))}
-                placeholder="optional"
               />
               <span className="block text-label-caps text-on-surface-variant">
                 {line.quantity} {line.unit ?? ''} at <Money paise={line.ratePaise} /> ={' '}
-                <Money paise={line.amountPaise} /> — not editable
+                <Money paise={line.amountPaise} />
               </span>
             </label>
           ))}
@@ -259,6 +259,18 @@ export function EntryEditDialog({
             </button>
           </div>
 
+          {onDelete && !detail.transaction.isVoided && (
+            <Button
+              variant="danger-text"
+              className="flex items-center gap-1"
+              onClick={onDelete}
+              disabled={saving}
+            >
+              <Trash2 size={16} aria-hidden="true" />
+              Delete this entry
+            </Button>
+          )}
+
           {/*
             The entry number sits down here on purpose. It is the app's own
             permanent ID, not something the owner typed, and as a chip at the
@@ -271,9 +283,7 @@ export function EntryEditDialog({
 
           {detail.audit.length > 0 && (
             <details>
-              <summary className="cursor-pointer text-body-md font-medium">
-                History of this record
-              </summary>
+              <summary className="cursor-pointer text-body-md font-medium">Change history</summary>
               <ul className="mt-2 space-y-1 text-body-md text-on-surface-variant">
                 {detail.audit.map((row) => (
                   <li key={row.id}>
@@ -291,8 +301,8 @@ export function EntryEditDialog({
 
 const ACTION_LABEL: Record<string, string> = {
   create: 'Entered',
-  edit: 'Wording edited',
-  void: 'Voided',
+  edit: 'Wording changed',
+  void: 'Deleted',
 };
 
 /**
@@ -335,8 +345,8 @@ function Figures({ tx, lines }: { tx: TransactionRow; lines: LineRow[] }) {
         </div>
       </dl>
       <p className="text-label-caps uppercase text-on-surface-variant">
-        {lines.length} line item{lines.length === 1 ? '' : 's'}
-        {tx.invoiceNo ? ` · invoice ${tx.invoiceNo}` : ''}
+        {lines.length} item{lines.length === 1 ? '' : 's'}
+        {tx.invoiceNo ? ` · Invoice no. ${tx.invoiceNo}` : ''}
       </p>
     </div>
   );

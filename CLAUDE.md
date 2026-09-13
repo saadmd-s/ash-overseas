@@ -30,7 +30,13 @@ bar below it. Every canonical class string lives in `src/client/ui.tsx`; no
 component holds a raw hex or px value. Behaviour, routes and API calls are
 unchanged.
 
-**215 tests green**: the six §6 scenarios at **both** the pure and
+**The interface speaks the owner's language** (DESIGN.md §14 item 5). "Void" is
+**Delete** on screen — still a void underneath — with deleted entries hidden by
+default, a Delete button on every row and in the entry sheet, and dealer edit /
+delete (archive) / restore. The `type` ledger filter now keeps a cancellation
+with the entry it cancels, as `mode` already did.
+
+**216 tests green**: the six §6 scenarios at **both** the pure and
 D1-integration level, the §15.3 atomicity test, the Phase 2 reconciliation gate,
 the Phase 3 auth gate, and the edit/filter/cursor suite.
 

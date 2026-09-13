@@ -60,7 +60,7 @@ export function PaymentForm({
     setFailure(null);
     setErrors({});
     try {
-      const created = await api.post<{ humanId: string }>('/api/payments', {
+      await api.post('/api/payments', {
         dealerId: dealer.id,
         entryDate: form.entryDate,
         direction: form.direction,
@@ -73,7 +73,7 @@ export function PaymentForm({
       });
 
       draft.clear(draftKey);
-      onSaved(`Saved ${created.humanId} — ${formatPaise(form.amountPaise ?? 0)}`);
+      onSaved(`Payment saved — ${formatPaise(form.amountPaise ?? 0)}`);
     } catch (e) {
       if (e instanceof RequestFailed) {
         setErrors(e.detail.fields ?? {});
@@ -98,7 +98,7 @@ export function PaymentForm({
       }}
     >
       <div>
-        <h1 className="text-headline-md text-primary">Add money</h1>
+        <h1 className="text-headline-md text-primary">Record a payment</h1>
         <p className="text-body-md text-on-surface-variant">{dealer.name}</p>
       </div>
 
@@ -106,7 +106,7 @@ export function PaymentForm({
         {/* Plain language, both ways. The words "debit" and "credit" never
             appear anywhere in the interface. */}
         <Segmented
-          legend="Direction"
+          legend="Money was"
           value={form.direction}
           onChange={(direction) => update({ direction })}
           options={[
@@ -144,9 +144,9 @@ export function PaymentForm({
             value={form.method}
             onChange={(e) => update({ method: e.target.value as Method | '' })}
           >
-            <option value="">Not recorded</option>
+            <option value="">Not specified</option>
             <option value="cash">Cash</option>
-            <option value="bank">Bank</option>
+            <option value="bank">Bank transfer</option>
             <option value="netbanking">Net banking</option>
             <option value="cheque">Cheque</option>
             <option value="upi">UPI</option>
@@ -163,11 +163,11 @@ export function PaymentForm({
               { value: 'od', label: 'OD' },
               { value: 'current', label: 'Current' },
             ]}
-            hint="A tag on your own account. It never splits the dealer’s balance."
+            hint="Which of your bank accounts this went through."
           />
         )}
 
-        <Field label="Reference" hint="Cheque number, UTR">
+        <Field label="Reference (optional)" hint="Cheque number or bank reference number">
           {({ id }) => (
             <input
               id={id}

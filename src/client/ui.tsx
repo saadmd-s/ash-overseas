@@ -57,7 +57,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 // Buttons
 // ---------------------------------------------------------------------------
 
-type Variant = 'filled' | 'outline' | 'destructive' | 'text';
+type Variant = 'filled' | 'outline' | 'destructive' | 'text' | 'danger-text';
 
 /**
  * Hover on a filled button is `opacity-90`, NOT a different colour. One hover
@@ -79,6 +79,11 @@ const VARIANT: Record<Variant, string> = {
     'rounded-lg bg-negative px-4 py-2.5 text-label-caps font-semibold text-on-negative ' +
     'transition-opacity hover:opacity-90 disabled:opacity-50',
   text: 'rounded-lg px-2 py-1.5 text-body-md font-medium text-primary transition-colors hover:bg-surface-container disabled:opacity-50',
+  // A delete link. Its own variant rather than `text` plus an override: two
+  // text-colour utilities on one element resolve by stylesheet order, not by
+  // which was written last, and the override lost.
+  'danger-text':
+    'rounded-lg px-2 py-1.5 text-body-md font-medium text-negative transition-colors hover:bg-negative-container disabled:opacity-50',
 };
 
 export function Button({

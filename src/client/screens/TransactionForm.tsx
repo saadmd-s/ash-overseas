@@ -159,40 +159,39 @@ export function TransactionForm({
     setErrors({});
 
     try {
-      const created = await api.post<{ humanId: string; grandTotalPaise: number }>(
-        '/api/transactions',
-        {
-          dealerId: dealer.id,
-          mode: form.mode,
-          entryDate: form.entryDate,
-          invoiceNo: form.invoiceNo || null,
-          invoiceDate: form.invoiceDate || null,
-          referenceTag: form.referenceTag || null,
-          bankAccount: form.bankAccount,
-          gstRate: Number(form.gstRate),
-          discountPaise: form.discountPaise ?? 0,
-          freightPaise: form.freightPaise ?? 0,
-          isReturnNote: form.isReturnNote,
-          notes: form.notes || null,
-          lines: form.lines.map((l) => ({
-            itemName: l.itemName || null,
-            quantity: Number(l.quantity),
-            unit: l.unit || null,
-            ratePaise: l.ratePaise ?? 0,
-          })),
-        },
-      );
+      const created = await api.post<{ grandTotalPaise: number }>('/api/transactions', {
+        dealerId: dealer.id,
+        mode: form.mode,
+        entryDate: form.entryDate,
+        invoiceNo: form.invoiceNo || null,
+        invoiceDate: form.invoiceDate || null,
+        referenceTag: form.referenceTag || null,
+        bankAccount: form.bankAccount,
+        gstRate: Number(form.gstRate),
+        discountPaise: form.discountPaise ?? 0,
+        freightPaise: form.freightPaise ?? 0,
+        isReturnNote: form.isReturnNote,
+        notes: form.notes || null,
+        lines: form.lines.map((l) => ({
+          itemName: l.itemName || null,
+          quantity: Number(l.quantity),
+          unit: l.unit || null,
+          ratePaise: l.ratePaise ?? 0,
+        })),
+      });
 
       localStorage.setItem(LAST_BANK_KEY, form.bankAccount);
       draft.clear(draftKey); // cleared only on SUCCESS
-      onSaved(`Saved ${created.humanId} — ${formatPaise(created.grandTotalPaise)}`);
+      onSaved(
+        `${form.mode === 'sale' ? 'Sale' : 'Purchase'} saved — ${formatPaise(created.grandTotalPaise)}`,
+      );
     } catch (e) {
       // On failure the input is preserved and the draft is kept (§10.6).
       if (e instanceof RequestFailed) {
         setErrors(e.detail.fields ?? {});
         setFailure(e.detail.message);
       } else {
-        setFailure('Could not save. Your entry has been kept.');
+        setFailure('Could not save.');
       }
     } finally {
       setSaving(false);
@@ -228,7 +227,7 @@ export function TransactionForm({
           the target is a 360px phone.
         */}
         <div className="grid grid-cols-2 gap-3">
-          <Labeled label="Mode">
+          <Labeled label="Purchase or sale">
             <select
               className={inputCls}
               value={form.mode}
@@ -264,7 +263,7 @@ export function TransactionForm({
             )}
           </Field>
 
-          <Field label="GST %" error={errors.gstRate} hint="0–100">
+          <Field label="GST %" error={errors.gstRate} hint="Usually 18">
             {({ id }) => (
               <input
                 id={id}
@@ -292,7 +291,7 @@ export function TransactionForm({
             { value: 'od', label: 'OD' },
             { value: 'current', label: 'Current' },
           ]}
-          hint="A tag on your own account. It never splits the dealer’s balance."
+          hint="Which of your bank accounts this went through."
         />
       </Card>
 
@@ -310,12 +309,12 @@ export function TransactionForm({
       {form.lines.map((line, i) => (
         <div key={i} className="space-y-3 rounded-lg border border-outline-variant p-3">
           <div className="flex items-center justify-between">
-            <span className="text-label-caps uppercase text-on-surface-variant">Line {i + 1}</span>
+            <span className="text-label-caps uppercase text-on-surface-variant">Item {i + 1}</span>
             {form.lines.length > 1 && (
               <button
                 type="button"
-                aria-label={`Remove line ${i + 1}`}
-                title={`Remove line ${i + 1}`}
+                aria-label={`Remove item ${i + 1}`}
+                title={`Remove item ${i + 1}`}
                 className="grid size-8 place-items-center rounded-lg text-negative transition-colors hover:bg-negative-container"
                 onClick={() => setForm((f) => ({ ...f, lines: f.lines.filter((_, j) => j !== i) }))}
               >
@@ -325,7 +324,7 @@ export function TransactionForm({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Item" hint="Optional">
+            <Field label="Item name" hint="Optional">
               {({ id }) => (
                 <input
                   id={id}
@@ -338,7 +337,7 @@ export function TransactionForm({
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Qty" error={errors[`lines.${i}.quantity`]}>
+              <Field label="Quantity" error={errors[`lines.${i}.quantity`]}>
                 {({ id }) => (
                   <input
                     id={id}
@@ -373,7 +372,7 @@ export function TransactionForm({
           />
 
           <p className="text-body-md text-on-surface-variant">
-            Line amount: <Money paise={totals.linesPaise[i] ?? 0} />
+            Amount: <Money paise={totals.linesPaise[i] ?? 0} />
           </p>
         </div>
       ))}
@@ -386,7 +385,7 @@ export function TransactionForm({
         onClick={() => setForm((f) => ({ ...f, lines: [...f.lines, emptyLine()] }))}
       >
         <Plus size={18} aria-hidden="true" />
-        Add line
+        Add another item
       </Button>
 
       {/*
@@ -457,7 +456,7 @@ export function TransactionForm({
                 />
               )}
             </Field>
-            <Field label="Invoice date" hint="Only if it differs">
+            <Field label="Invoice date" hint="Only if different from the date above">
               {({ id }) => (
                 <input
                   id={id}
@@ -477,7 +476,7 @@ export function TransactionForm({
               value={form.discountPaise}
               onChange={(discountPaise) => update({ discountPaise })}
               error={errors.discountPaise}
-              hint="Cannot exceed the base total"
+              hint="Cannot be more than the base price"
             />
             <MoneyInput
               label="Freight"
@@ -494,9 +493,9 @@ export function TransactionForm({
               onChange={(e) => update({ isReturnNote: e.target.checked })}
             />
             <span className="text-body-md">
-              This is a return or credit/debit note
+              These goods were returned (or this is a credit/debit note)
               <span className="block text-label-caps text-on-surface-variant">
-                Posts the opposite way to its mode
+                Tick this to take the amount off the balance instead of adding it
               </span>
             </span>
           </label>

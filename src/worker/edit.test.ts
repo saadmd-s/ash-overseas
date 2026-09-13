@@ -348,6 +348,33 @@ describe('The mode filter — SRS §14, APP_FLOW §7', () => {
     );
     expect(purchases.entries.map((e) => e.label)).toEqual(['Purchase']);
   });
+
+  it('keeps a deleted payment’s cancellation under the payments filter', async () => {
+    // Filtering on the row's own source_type dropped the cancellation and kept
+    // the deleted payment, which then read as live.
+    const dealerId = await newDealer();
+    await newTransaction(dealerId, { mode: 'sale', entryDate: '2026-08-01' });
+    const created = await json<{ id: number }>(
+      await post('/api/payments', {
+        dealerId,
+        entryDate: '2026-08-02',
+        direction: 'received',
+        amountPaise: 50_000,
+        bankAccount: 'od',
+      }),
+    );
+    await post(`/api/payments/${created.id}/void`, {});
+
+    const payments = await json<{ entries: { label: string | null }[] }>(
+      await get(`/api/dealers/${dealerId}/ledger?type=payment`),
+    );
+    expect(payments.entries.map((e) => e.label)).toEqual(['Received', 'Reversal']);
+
+    const goods = await json<{ entries: { label: string | null }[] }>(
+      await get(`/api/dealers/${dealerId}/ledger?type=transaction`),
+    );
+    expect(goods.entries.map((e) => e.label)).toEqual(['Sale']);
+  });
 });
 
 describe('Page cursors are validated, never coerced', () => {

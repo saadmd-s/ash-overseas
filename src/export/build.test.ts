@@ -162,7 +162,7 @@ describe('Voided rows are included, never dropped (§11.4)', () => {
 
   it('keeps the voided row and flags it', () => {
     expect(sheet.rows).toHaveLength(2);
-    expect(sheet.rows[0][20]).toBe('VOIDED');
+    expect(sheet.rows[0][20]).toBe('Deleted');
   });
 
   it('marks it for strike-through', () => {
@@ -170,7 +170,7 @@ describe('Voided rows are included, never dropped (§11.4)', () => {
   });
 
   it('puts the reversal on the following row', () => {
-    expect(sheet.rows[1][20]).toBe('REVERSAL');
+    expect(sheet.rows[1][20]).toBe('Cancels a deleted entry');
     expect(sheet.rows[1][17]).toBe(219_952); // the reversing credit
   });
 });
