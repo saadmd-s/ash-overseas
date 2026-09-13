@@ -67,7 +67,7 @@ and local-only — see [Things that will bite you](#things-that-will-bite-you).
 | `pnpm auth:setup`        | Write the login ([Logins](#logins-and-passwords))       |
 | `pnpm deploy:prod`       | Deploy to production                                    |
 
-The suite should read **214 passing**. If a number here has drifted, the count
+The suite should read **215 passing**. If a number here has drifted, the count
 in [README](../README.md) and [CLAUDE.md](../CLAUDE.md) is stale, not wrong —
 check what changed.
 
