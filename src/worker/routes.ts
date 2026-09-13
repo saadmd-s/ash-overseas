@@ -17,19 +17,22 @@ import { Hono } from 'hono';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {
+  addOpening,
   createDealer,
   createPayment,
   createTransaction,
   currentBalance,
   makeDb,
+  OpeningExists,
 } from '../posting/post';
-import { voidPayment, voidTransaction } from '../posting/recompute';
+import { voidOpening, voidPayment, voidTransaction } from '../posting/recompute';
 import type { BatchItem } from '../posting/db';
 import {
   createDealerSchema,
   createPaymentSchema,
   createTransactionSchema,
   ledgerQuerySchema,
+  openingSchema,
   patchTransactionSchema,
 } from './schemas';
 import { modeMatcher, typeMatcher } from './export-query';
@@ -212,6 +215,45 @@ api.post('/payments', async (c) => {
   if (problem) return c.json(fail(problem.code, problem.message), problem.status);
 
   return c.json(await createPayment(db, parsed.data), 201);
+});
+
+/**
+ * FR-D5 — add the balance carried over from the old book to an existing dealer.
+ * At most one live opening per dealer; see `addOpening`.
+ */
+api.post('/dealers/:id/opening', async (c) => {
+  const id = idParam.safeParse(c.req.param('id'));
+  if (!id.success) return c.json(fail('NOT_FOUND', 'No such dealer.'), 404);
+
+  const parsed = openingSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json(fail('VALIDATION_FAILED', 'Check the balance.', flatten(parsed.error)), 400);
+  }
+
+  const db = makeDb(c.env.DB);
+  const problem = await assertPostableDealer(db, id.data);
+  if (problem) return c.json(fail(problem.code, problem.message), problem.status);
+
+  try {
+    await addOpening(db, id.data, parsed.data);
+  } catch (error) {
+    if (error instanceof OpeningExists) {
+      return c.json(fail('OPENING_EXISTS', error.message), 409);
+    }
+    throw error;
+  }
+  return c.json({ runningBalancePaise: await currentBalance(db, id.data) }, 201);
+});
+
+api.post('/dealers/:id/opening/void', async (c) => {
+  const id = idParam.safeParse(c.req.param('id'));
+  if (!id.success) return c.json(fail('NOT_FOUND', 'No such dealer.'), 404);
+
+  try {
+    return c.json(await voidOpening(makeDb(c.env.DB), id.data));
+  } catch (error) {
+    return c.json(fail('VOID_FAILED', (error as Error).message), 409);
+  }
 });
 
 api.post('/transactions/:id/void', async (c) => {

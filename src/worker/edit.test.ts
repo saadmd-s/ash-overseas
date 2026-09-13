@@ -442,3 +442,40 @@ describe('Export filters are validated too', () => {
     }
   });
 });
+
+describe('Balance from the old book — FR-D5', () => {
+  const opening = { direction: 'owes_us', amountPaise: 500_000, entryDate: '2026-04-01' };
+
+  it('is added, refused twice, deleted, and flagged in the export', async () => {
+    const dealerId = await newDealer();
+
+    const added = await post(`/api/dealers/${dealerId}/opening`, opening);
+    expect(added.status).toBe(201);
+    expect((await json<{ runningBalancePaise: number }>(added)).runningBalancePaise).toBe(500_000);
+
+    const again = await post(`/api/dealers/${dealerId}/opening`, opening);
+    expect(again.status).toBe(409);
+    expect((await json<{ error: { code: string } }>(again)).error.code).toBe('OPENING_EXISTS');
+
+    const voided = await post(`/api/dealers/${dealerId}/opening/void`, {});
+    expect(voided.status).toBe(200);
+    expect((await json<{ runningBalancePaise: number }>(voided)).runningBalancePaise).toBe(0);
+
+    const exported = await json<{ rows: { type: string; status: string }[] }>(
+      await get(`/api/export/dealer/${dealerId}`),
+    );
+    expect(exported.rows.map((r) => [r.type, r.status])).toEqual([
+      ['Opening', 'VOIDED'],
+      ['Reversal', 'REVERSAL'],
+    ]);
+
+    // Deleted, so a corrected figure can be entered.
+    expect((await post(`/api/dealers/${dealerId}/opening`, opening)).status).toBe(201);
+  });
+
+  it('validates the amount', async () => {
+    const dealerId = await newDealer();
+    const res = await post(`/api/dealers/${dealerId}/opening`, { ...opening, amountPaise: 0 });
+    expect(res.status).toBe(400);
+  });
+});

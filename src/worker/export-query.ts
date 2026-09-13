@@ -184,6 +184,12 @@ export async function dealerLedgerRows(
       ? typeMatcher(entries, filters.type)
       : null;
 
+  // An opening has no source row to flag, so "deleted" is read from the
+  // cancellation that points at it.
+  const cancelledIds = new Set(
+    entries.filter((e) => e.reversesEntryId !== null).map((e) => e.reversesEntryId),
+  );
+
   const rows: LedgerExportRow[] = [];
 
   for (const entry of entries) {
@@ -270,8 +276,13 @@ export async function dealerLedgerRows(
       gstAmountPaise: null,
       roundOffPaise: null,
       totalPaise: entry.debitPaise !== 0 ? entry.debitPaise : entry.creditPaise,
-      status: (entry.sourceType === 'reversal' ? 'REVERSAL' : '') as RowStatus,
-      notes: entry.description,
+      status: (entry.sourceType === 'reversal'
+        ? 'REVERSAL'
+        : cancelledIds.has(entry.id)
+          ? 'VOIDED'
+          : '') as RowStatus,
+      // A cancellation's stored description is internal wording.
+      notes: entry.sourceType === 'reversal' ? null : entry.description,
     });
   }
 

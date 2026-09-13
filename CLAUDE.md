@@ -33,10 +33,13 @@ unchanged.
 **The interface speaks the owner's language** (DESIGN.md §14 item 5). "Void" is
 **Delete** on screen — still a void underneath — with deleted entries hidden by
 default, a Delete button on every row and in the entry sheet, and dealer edit /
-delete (archive) / restore. The `type` ledger filter now keeps a cancellation
-with the entry it cancels, as `mode` already did.
+delete (archive) / restore. A dealer can carry a **balance from the old book**
+(FR-D5's opening entry), entered on New dealer or later from the dealer page:
+one live one per dealer, deletable like any entry (`POST /api/dealers/:id/opening`
+and `/opening/void`). The `type` ledger filter now keeps a cancellation with the
+entry it cancels, as `mode` already did.
 
-**216 tests green**: the six §6 scenarios at **both** the pure and
+**221 tests green**: the six §6 scenarios at **both** the pure and
 D1-integration level, the §15.3 atomicity test, the Phase 2 reconciliation gate,
 the Phase 3 auth gate, and the edit/filter/cursor suite.
 
@@ -65,13 +68,11 @@ backup, restore, password recovery, correcting a wrong entry.
   run against `ledger-dev` with seeded data since removed. **Re-run it against
   `ledger-prod` once the first real transactions exist.** That is the last
   NFR-B3 tick.
-- **The layout has never been seen at 360 px in a real browser**, and no export
-  download has been watched to actually save under the CSP. This matters more
-  since the redesign, not less: every screen changed, and typecheck, lint and
-  build passing say nothing about whether the bottom tab bar, the balance
-  headline and the entry sheet actually fit a 360 px phone.
-  Note that `vite dev` serves a **deliberately looser CSP** than production (see
-  the comment in `vite.config.ts`), so the export-download check has to be run
+- **No export download has been watched to actually save under the production
+  CSP.** The layout HAS now been checked at 360 px in headless Chrome against a
+  local build (every screen, no horizontal overflow, no console errors), but
+  never on a real phone. `vite dev` serves a **deliberately looser CSP** than
+  production (see `vite.config.ts`), so the download check has to be run
   against `vite preview` or a real deploy to prove anything.
 - **`app.onError` is not covered by a test.** No route in the application can be
   made to throw on demand, and adding a fault-injection route to production code

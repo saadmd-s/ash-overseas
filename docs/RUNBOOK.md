@@ -67,7 +67,7 @@ and local-only — see [Things that will bite you](#things-that-will-bite-you).
 | `pnpm auth:setup`        | Write the login ([Logins](#logins-and-passwords))       |
 | `pnpm deploy:prod`       | Deploy to production                                    |
 
-The suite should read **216 passing**. If a number here has drifted, the count
+The suite should read **221 passing**. If a number here has drifted, the count
 in [README](../README.md) and [CLAUDE.md](../CLAUDE.md) is stale, not wrong —
 check what changed.
 
@@ -314,6 +314,10 @@ audit row is written. The screen hides the pair by default ("Show deleted
 entries" reveals it); exports always include both, marked "Deleted" and "Cancels
 a deleted entry". Deleting a **dealer** archives them; "Show deleted dealers" on
 the Dealers screen finds them again, and their page has Restore.
+
+A wrong **balance from the old book** is corrected the same way: Delete it on the
+dealer page, then "Add balance from old book" appears again. Only one can be live
+per dealer; a second is refused with `OPENING_EXISTS`.
 
 - Wrong **amount, date, quantity, rate, GST rate, discount, freight, dealer or
   mode** → delete it and re-enter. There is no edit path for these, on purpose.

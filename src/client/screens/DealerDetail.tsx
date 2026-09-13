@@ -23,6 +23,7 @@ import {
   HandCoins,
   ListFilter,
   Pencil,
+  Plus,
   ScrollText,
   ShoppingCart,
   Tag,
@@ -36,6 +37,7 @@ import {
   entryLabel,
   formatDate,
   RequestFailed,
+  todayIST,
   toQuery,
   type Dealer,
   type DealerType,
@@ -49,6 +51,7 @@ import {
   ExportMenu,
   InlineBalance,
   Money,
+  MoneyInput,
 } from '../components';
 import {
   Button,
@@ -142,6 +145,7 @@ export function DealerDetail({
   const [opened, setOpened] = useState<number | null>(null);
   const [editingDealer, setEditingDealer] = useState(false);
   const [removingDealer, setRemovingDealer] = useState(false);
+  const [addingOpening, setAddingOpening] = useState(false);
 
   const query = toQuery(filters as Record<string, string>);
 
@@ -156,11 +160,14 @@ export function DealerDetail({
   useEffect(load, [load]);
 
   async function confirmDelete() {
-    if (!deleting || deleting.sourceId === null) return;
-    if (deleting.sourceType !== 'transaction' && deleting.sourceType !== 'payment') return;
+    if (!deleting) return;
+    const { sourceType, sourceId } = deleting;
+    if (sourceType === 'reversal') return;
+    const id = sourceType === 'opening' ? dealer.id : sourceId;
+    if (id === null) return;
     setDeleteBusy(true);
     try {
-      await deleteEntry(deleting.sourceType, deleting.sourceId);
+      await deleteEntry(sourceType, id);
       toast('Entry deleted.');
       setDeleting(null);
       load();
@@ -203,6 +210,12 @@ export function DealerDetail({
   const deletedEntryIds = new Set(
     page.entries.filter((e) => e.reversesEntryId !== null).map((e) => e.reversesEntryId),
   );
+  // Offered only on the unfiltered history, where an opening that exists is
+  // certain to be in the list.
+  const canAddOpening =
+    !dealer.isArchived &&
+    !filtered &&
+    !page.entries.some((e) => e.sourceType === 'opening' && !deletedEntryIds.has(e.id));
 
   return (
     <div className="space-y-4">
@@ -278,6 +291,16 @@ export function DealerDetail({
 
       <Card>
         <BalanceHeadline paise={page.balancePaise} dealerName={dealer.name} />
+        {canAddOpening && (
+          <Button
+            variant="text"
+            className="-ml-2 mt-2 flex items-center gap-1"
+            onClick={() => setAddingOpening(true)}
+          >
+            <Plus size={16} aria-hidden="true" />
+            Add balance from old book
+          </Button>
+        )}
       </Card>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -388,8 +411,9 @@ export function DealerDetail({
             const canDelete =
               !dealer.isArchived &&
               !isDeleted &&
-              entry.sourceId !== null &&
-              (entry.sourceType === 'transaction' || entry.sourceType === 'payment');
+              (entry.sourceType === 'opening' ||
+                (entry.sourceId !== null &&
+                  (entry.sourceType === 'transaction' || entry.sourceType === 'payment')));
             const canOpen = entry.sourceType === 'transaction' && entry.sourceId !== null;
 
             return (
@@ -513,6 +537,19 @@ export function DealerDetail({
         />
       )}
 
+      {addingOpening && (
+        <AddOpeningDialog
+          dealer={dealer}
+          onSaved={() => {
+            setAddingOpening(false);
+            toast('Balance from old book saved.');
+            load();
+            onChanged();
+          }}
+          onCancel={() => setAddingOpening(false)}
+        />
+      )}
+
       {editingDealer && (
         <EditDealerDialog
           dealer={dealer}
@@ -627,6 +664,141 @@ function EditDealerDialog({
           <button
             type="submit"
             disabled={!name.trim() || busy}
+            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Balance from the old book — FR-D5
+// ---------------------------------------------------------------------------
+
+export interface OpeningDraft {
+  direction: 'owes_us' | 'we_owe';
+  amountPaise: number | null;
+  entryDate: string;
+}
+
+export const emptyOpening = (): OpeningDraft => ({
+  direction: 'owes_us',
+  amountPaise: null,
+  entryDate: todayIST(),
+});
+
+/** Shared by New dealer and the dealer page. */
+export function OpeningFields({
+  value,
+  onChange,
+  errors = {},
+}: {
+  value: OpeningDraft;
+  onChange: (patch: Partial<OpeningDraft>) => void;
+  errors?: Record<string, string>;
+}) {
+  return (
+    <>
+      <Segmented
+        legend="In your old book"
+        value={value.direction}
+        onChange={(direction) => onChange({ direction })}
+        options={[
+          { value: 'owes_us', label: 'They owe me' },
+          { value: 'we_owe', label: 'I owe them' },
+        ]}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <MoneyInput
+          label="Amount"
+          value={value.amountPaise}
+          onChange={(amountPaise) => onChange({ amountPaise })}
+          error={errors['opening.amountPaise'] ?? errors.amountPaise}
+        />
+        <Field
+          label="As on date"
+          error={errors['opening.entryDate'] ?? errors.entryDate}
+          hint="The date of this figure in your book"
+        >
+          {({ id, describedBy }) => (
+            <input
+              id={id}
+              aria-describedby={describedBy}
+              className={inputCls}
+              type="date"
+              max={todayIST()}
+              value={value.entryDate}
+              onChange={(e) => onChange({ entryDate: e.target.value })}
+            />
+          )}
+        </Field>
+      </div>
+    </>
+  );
+}
+
+function AddOpeningDialog({
+  dealer,
+  onSaved,
+  onCancel,
+}: {
+  dealer: Dealer;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState<OpeningDraft>(emptyOpening);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [failure, setFailure] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const canSave = value.amountPaise !== null && value.amountPaise > 0 && !busy;
+
+  async function save() {
+    setBusy(true);
+    setErrors({});
+    setFailure(null);
+    try {
+      await api.post(`/api/dealers/${dealer.id}/opening`, value);
+      onSaved();
+    } catch (e) {
+      if (e instanceof RequestFailed) {
+        setErrors(e.detail.fields ?? {});
+        setFailure(e.detail.message);
+      } else {
+        setFailure('Could not save. Please try again.');
+      }
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Balance from old book" busy={busy} onClose={onCancel}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (canSave) void save();
+        }}
+      >
+        <p className="text-body-md text-on-surface-variant">
+          What {dealer.name} and you owed each other before you started using this app. It is added
+          to their balance like any other entry.
+        </p>
+        <OpeningFields
+          value={value}
+          onChange={(patch) => setValue((v) => ({ ...v, ...patch }))}
+          errors={errors}
+        />
+        {failure && <ErrorBanner message={failure} />}
+        <div className="flex gap-2">
+          <Button variant="outline" className="flex-1 py-2.5" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <button
+            type="submit"
+            disabled={!canSave}
             className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {busy ? 'Saving...' : 'Save'}

@@ -52,6 +52,13 @@ export const bankAccount = z.enum(['od', 'current']);
 /** §8.3 — a number from 0 to 100 inclusive. Not restricted to a fixed set. */
 export const gstRate = z.number().finite().min(0).max(100);
 
+/** FR-D5 — the balance carried over from the old book. */
+export const openingSchema = z.object({
+  direction: z.enum(['owes_us', 'we_owe']),
+  amountPaise: positivePaise,
+  entryDate,
+});
+
 export const createDealerSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
   contact: z.string().trim().nullish(),
@@ -59,14 +66,9 @@ export const createDealerSchema = z.object({
   gstin: z.string().trim().nullish(),
   stateCode: z.string().trim().nullish(),
   type: z.enum(['supplier', 'buyer', 'both']).default('both'),
-  opening: z
-    .object({
-      direction: z.enum(['owes_us', 'we_owe']),
-      amountPaise: positivePaise,
-      entryDate,
-    })
-    .optional(),
+  opening: openingSchema.optional(),
 });
+
 
 const transactionLine = z.object({
   itemName: z.string().trim().nullish(),

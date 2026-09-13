@@ -262,7 +262,7 @@ export function entryLabel(label: string | null): string {
     case 'Paid':
       return 'Money paid';
     case 'Opening':
-      return 'Starting balance';
+      return 'Balance from old book';
     case 'Reversal':
       return 'Cancels a deleted entry';
     default:
@@ -275,11 +275,16 @@ export function entryLabel(label: string | null): string {
  * and opposite entry cancels it, and an audit row records it — so nothing is
  * ever removed and every balance stays the sum of what is kept (SRS §15.7).
  */
-export function deleteEntry(sourceType: 'transaction' | 'payment', sourceId: number) {
-  return api.post(
+export function deleteEntry(
+  sourceType: 'transaction' | 'payment' | 'opening',
+  /** The transaction or payment id — or, for an opening, the DEALER id. */
+  id: number,
+) {
+  const path =
     sourceType === 'transaction'
-      ? `/api/transactions/${sourceId}/void`
-      : `/api/payments/${sourceId}/void`,
-    {},
-  );
+      ? `/api/transactions/${id}/void`
+      : sourceType === 'payment'
+        ? `/api/payments/${id}/void`
+        : `/api/dealers/${id}/opening/void`;
+  return api.post(path, {});
 }

@@ -145,10 +145,15 @@ export interface VoidResult {
 async function voidSource(
   db: Db,
   opts: {
-    sourceType: 'transaction' | 'payment';
-    sourceId: number;
+    sourceType: 'transaction' | 'payment' | 'opening';
+    /** Null for an opening, which has no source record. */
+    sourceId: number | null;
     dealerId: number;
-    flagVoided: BatchItem;
+    /** Null for an opening: there is no source row to flag. The cancellation
+     *  row, linked by `reverses_entry_id`, is the record that it was deleted. */
+    flagVoided: BatchItem | null;
+    /** Addresses the original row directly when there is no source id. */
+    originalEntryId?: number;
     beforeJson: string;
   },
 ): Promise<VoidResult> {
@@ -162,10 +167,12 @@ async function voidSource(
     })
     .from(schema.ledgerEntries)
     .where(
-      and(
-        eq(schema.ledgerEntries.sourceType, opts.sourceType),
-        eq(schema.ledgerEntries.sourceId, opts.sourceId),
-      ),
+      opts.originalEntryId !== undefined
+        ? eq(schema.ledgerEntries.id, opts.originalEntryId)
+        : and(
+            eq(schema.ledgerEntries.sourceType, opts.sourceType),
+            eq(schema.ledgerEntries.sourceId, opts.sourceId ?? -1),
+          ),
     )
     .limit(1);
 
@@ -188,7 +195,7 @@ async function voidSource(
         ORDER BY entry_date DESC, id DESC LIMIT 1), 0)
     + ${original.creditPaise} - ${original.debitPaise})`;
 
-  await db.batch([
+  const statements: BatchItem[] = [
     db.insert(schema.ledgerEntries).values({
       dealerId: opts.dealerId,
       // The reversal carries the ORIGINAL entry's date, so replay places it
@@ -204,15 +211,22 @@ async function voidSource(
       label: 'Reversal',
       description: 'Cancels a deleted entry',
     }),
-    opts.flagVoided,
     db.insert(schema.auditLog).values({
       action: 'void',
-      entity: opts.sourceType === 'transaction' ? 'transactions' : 'payments',
-      entityId: opts.sourceId,
+      entity:
+        opts.sourceType === 'transaction'
+          ? 'transactions'
+          : opts.sourceType === 'payment'
+            ? 'payments'
+            : 'dealers',
+      entityId: opts.sourceType === 'opening' ? opts.dealerId : opts.sourceId,
       beforeJson: opts.beforeJson,
       afterJson: JSON.stringify({ isVoided: true, reversesEntryId: original.id }),
     }),
-  ]);
+  ];
+  if (opts.flagVoided) statements.push(opts.flagVoided);
+
+  await db.batch(statements as [BatchItem, ...BatchItem[]]);
 
   const reversal = await db
     .select({ id: schema.ledgerEntries.id })
@@ -262,6 +276,52 @@ export async function voidTransaction(db: Db, transactionId: number): Promise<Vo
       isVoided: false,
     }),
   });
+}
+
+/**
+ * Delete a dealer's balance carried over from the old book.
+ *
+ * The same void as any other entry — an equal and opposite cancellation, an
+ * audit row, a replay — addressed by the ledger row itself, because an opening
+ * has no source record to flag.
+ */
+export async function voidOpening(db: Db, dealerId: number): Promise<VoidResult> {
+  const openings = await db
+    .select()
+    .from(schema.ledgerEntries)
+    .where(
+      and(
+        eq(schema.ledgerEntries.dealerId, dealerId),
+        eq(schema.ledgerEntries.sourceType, 'opening'),
+      ),
+    )
+    .orderBy(asc(schema.ledgerEntries.id));
+
+  for (const opening of openings) {
+    const reversed = await db
+      .select({ id: schema.ledgerEntries.id })
+      .from(schema.ledgerEntries)
+      .where(eq(schema.ledgerEntries.reversesEntryId, opening.id))
+      .limit(1);
+    if (reversed[0]) continue;
+
+    return voidSource(db, {
+      sourceType: 'opening',
+      sourceId: null,
+      dealerId,
+      flagVoided: null,
+      originalEntryId: opening.id,
+      beforeJson: JSON.stringify({
+        opening: {
+          entryDate: opening.entryDate,
+          debitPaise: opening.debitPaise,
+          creditPaise: opening.creditPaise,
+        },
+      }),
+    });
+  }
+
+  throw new Error('This dealer has no balance from the old book to delete.');
 }
 
 export async function voidPayment(db: Db, paymentId: number): Promise<VoidResult> {

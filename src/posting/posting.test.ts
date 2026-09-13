@@ -12,14 +12,16 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { asc, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {
+  addOpening,
   createDealer,
   createPayment,
   createTransaction,
   currentBalance,
   makeDb,
+  OpeningExists,
   type Db,
 } from './post';
-import { checkLedgerIntegrity, recomputeLedger, voidTransaction } from './recompute';
+import { checkLedgerIntegrity, recomputeLedger, voidOpening, voidTransaction } from './recompute';
 
 let db: Db;
 let dealerId: number;
@@ -335,6 +337,58 @@ describe('Opening position (FR-D5)', () => {
     expect(rows[0].creditPaise).toBe(5_000_000);
     expect(rows[0].runningBalancePaise).toBe(-5_000_000);
     expect(await currentBalance(db, id)).toBe(-5_000_000);
+  });
+
+  it('can be added later, dated before existing entries, and replays', async () => {
+    await sale('2026-08-05', 1, 100_000); // ₹1,000 + 18% GST = ₹1,180.00
+    await addOpening(db, dealerId, {
+      direction: 'owes_us',
+      amountPaise: 2_000_000,
+      entryDate: '2026-04-01',
+    });
+
+    const rows = await history();
+    expect(rows.map((r) => r.sourceType)).toEqual(['opening', 'transaction']);
+    expect(rows.map((r) => r.runningBalancePaise)).toEqual([2_000_000, 2_118_000]);
+    expect(await checkLedgerIntegrity(db, dealerId)).toEqual({ ok: true });
+  });
+
+  it('refuses a second live opening', async () => {
+    const opening = { direction: 'we_owe' as const, amountPaise: 1_000, entryDate: '2026-04-01' };
+    await addOpening(db, dealerId, opening);
+    await expect(addOpening(db, dealerId, opening)).rejects.toBeInstanceOf(OpeningExists);
+  });
+
+  it('is deleted like any entry, and can then be entered again', async () => {
+    await addOpening(db, dealerId, {
+      direction: 'owes_us',
+      amountPaise: 5_000_000,
+      entryDate: '2026-04-01',
+    });
+    await sale('2026-08-05', 1, 100_000);
+
+    const result = await voidOpening(db, dealerId);
+    expect(result.runningBalancePaise).toBe(118_000);
+    expect(await currentBalance(db, dealerId)).toBe(118_000);
+
+    // Kept, with its cancellation beside it, and audited against the dealer.
+    const rows = await history();
+    const opening = rows.find((r) => r.sourceType === 'opening')!;
+    const cancellation = rows.find((r) => r.reversesEntryId === opening.id)!;
+    expect(cancellation.debitPaise).toBe(0);
+    expect(cancellation.creditPaise).toBe(5_000_000);
+    const audit = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, 'void'));
+    expect(audit.map((a) => [a.entity, a.entityId])).toEqual([['dealers', dealerId]]);
+
+    await expect(voidOpening(db, dealerId)).rejects.toThrow(/no balance from the old book/i);
+
+    await addOpening(db, dealerId, {
+      direction: 'owes_us',
+      amountPaise: 4_000_000,
+      entryDate: '2026-04-01',
+    });
+    expect(await currentBalance(db, dealerId)).toBe(4_118_000);
+    expect(await checkLedgerIntegrity(db, dealerId)).toEqual({ ok: true });
   });
 });
 

@@ -458,39 +458,93 @@ export async function createDealer(db: Db, input: CreateDealerInput): Promise<{ 
   const dealer = inserted[0];
   if (!dealer) throw new Error('Dealer was not created.');
 
-  if (input.opening) {
-    const entry = post(0, {
-      kind: 'opening',
-      direction: input.opening.direction,
-      amountPaise: input.opening.amountPaise,
-      entryDate: input.opening.entryDate,
-    });
-
-    await db.batch([
-      db.insert(schema.ledgerEntries).values({
-        dealerId: dealer.id,
-        entryDate: input.opening.entryDate,
-        sourceType: 'opening',
-        // §12.3 leaves the convention unstated; an opening entry has no separate
-        // source record — the dealer is already named on the row. See
-        // docs/BACKEND_SCHEMA.md §4.5.
-        sourceId: null,
-        debitPaise: entry.debitPaise,
-        creditPaise: entry.creditPaise,
-        runningBalancePaise: entry.runningBalancePaise,
-        bankAccount: null,
-        label: 'Opening',
-        description: 'Opening position',
-      }),
-      db.insert(schema.auditLog).values({
-        action: 'create',
-        entity: 'dealers',
-        entityId: dealer.id,
-        beforeJson: null,
-        afterJson: JSON.stringify({ opening: input.opening }),
-      }),
-    ]);
-  }
+  if (input.opening) await addOpening(db, dealer.id, input.opening);
 
   return { id: dealer.id };
+}
+
+export type OpeningInput = NonNullable<CreateDealerInput['opening']>;
+
+export class OpeningExists extends Error {
+  constructor() {
+    super(
+      'This dealer already has a balance from the old book. Delete it first to enter a new one.',
+    );
+  }
+}
+
+/** The dealer's opening entry that has not been deleted, if any. */
+export async function liveOpeningEntry(db: Db, dealerId: number) {
+  const openings = await db
+    .select({ id: schema.ledgerEntries.id })
+    .from(schema.ledgerEntries)
+    .where(
+      and(
+        eq(schema.ledgerEntries.dealerId, dealerId),
+        eq(schema.ledgerEntries.sourceType, 'opening'),
+      ),
+    );
+  for (const opening of openings) {
+    const reversed = await db
+      .select({ id: schema.ledgerEntries.id })
+      .from(schema.ledgerEntries)
+      .where(eq(schema.ledgerEntries.reversesEntryId, opening.id))
+      .limit(1);
+    if (!reversed[0]) return opening;
+  }
+  return null;
+}
+
+/**
+ * FR-D5 — the balance carried over from the paper book, as an `opening` ledger
+ * entry, never a mutable field on the dealer.
+ *
+ * Offered at dealer creation AND afterwards, because the only correction for a
+ * wrong opening figure is the same as for any entry: delete it and enter it
+ * again. One live opening per dealer; a second is refused rather than silently
+ * stacked, since two "starting balances" is never what the owner means.
+ *
+ * It may be dated before entries that already exist, so it is posted against
+ * the balance on that date and followed by a replay when needed (§15.6).
+ */
+export async function addOpening(db: Db, dealerId: number, opening: OpeningInput): Promise<void> {
+  if (await liveOpeningEntry(db, dealerId)) throw new OpeningExists();
+
+  const prior = await balanceBefore(db, dealerId, opening.entryDate);
+  const entry = post(prior, {
+    kind: 'opening',
+    direction: opening.direction,
+    amountPaise: opening.amountPaise,
+    entryDate: opening.entryDate,
+  });
+
+  await db.batch([
+    db.insert(schema.ledgerEntries).values({
+      dealerId,
+      entryDate: opening.entryDate,
+      sourceType: 'opening',
+      // §12.3 leaves the convention unstated; an opening entry has no separate
+      // source record — the dealer is already named on the row. See
+      // docs/BACKEND_SCHEMA.md §4.5.
+      sourceId: null,
+      debitPaise: entry.debitPaise,
+      creditPaise: entry.creditPaise,
+      runningBalancePaise: entry.runningBalancePaise,
+      bankAccount: null,
+      label: 'Opening',
+      description: null,
+    }),
+    db.insert(schema.auditLog).values({
+      action: 'create',
+      entity: 'dealers',
+      entityId: dealerId,
+      beforeJson: null,
+      afterJson: JSON.stringify({ opening }),
+    }),
+  ]);
+
+  const inserted = await liveOpeningEntry(db, dealerId);
+  if (inserted && (await hasEntriesAfter(db, dealerId, opening.entryDate, inserted.id))) {
+    await recomputeLedger(db, dealerId);
+  }
 }

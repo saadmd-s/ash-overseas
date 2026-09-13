@@ -148,7 +148,13 @@ const STATUS_TEXT: Record<string, string> = {
   REVERSAL: 'Cancels a deleted entry',
 };
 const statusText = (status: string) => STATUS_TEXT[status] ?? status;
-const typeText = (type: string) => (type === 'Reversal' ? 'Cancellation' : type);
+const TYPE_TEXT: Record<string, string> = {
+  Reversal: 'Cancellation',
+  Opening: 'Balance from old book',
+  Received: 'Money received',
+  Paid: 'Money paid',
+};
+const typeText = (type: string) => TYPE_TEXT[type] ?? type;
 
 function buildDealerLedger(data: DealerLedgerExport, generatedAt: string): Sheet {
   const rows: Cell[][] = [];

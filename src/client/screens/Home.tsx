@@ -41,7 +41,7 @@ import {
   rowButtonCls,
 } from '../ui';
 import { EntryEditDialog } from './EntryEdit';
-import { DealerFields } from './DealerDetail';
+import { DealerFields, emptyOpening, OpeningFields, type OpeningDraft } from './DealerDetail';
 
 // ---------------------------------------------------------------------------
 // Home
@@ -500,21 +500,40 @@ export function NewDealer({
   const [name, setName] = useState('');
   const [type, setType] = useState<DealerType>('both');
   const [gstin, setGstin] = useState('');
+  const [opening, setOpening] = useState<OpeningDraft>(emptyOpening);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   async function save() {
     setSaving(true);
     setError(null);
+    setFieldErrors({});
     try {
       const created = await api.post<{ id: number }>('/api/dealers', {
         name,
         type,
         gstin: gstin || null,
+        // Optional: sent only when an amount was actually entered.
+        ...(opening.amountPaise
+          ? {
+              opening: {
+                direction: opening.direction,
+                amountPaise: opening.amountPaise,
+                entryDate: opening.entryDate,
+              },
+            }
+          : {}),
       });
       onSaved(created.id);
     } catch (e) {
-      setError(e instanceof RequestFailed ? e.detail.message : 'Could not create the dealer.');
+      if (e instanceof RequestFailed) {
+        const fields = e.detail.fields ?? {};
+        setFieldErrors(fields);
+        setError(fields.name ?? (Object.keys(fields).length ? null : e.detail.message));
+      } else {
+        setError('Could not create the dealer.');
+      }
     } finally {
       setSaving(false);
     }
@@ -539,6 +558,21 @@ export function NewDealer({
           gstin={gstin}
           setGstin={setGstin}
           error={error}
+        />
+      </Card>
+
+      <Card className="space-y-4">
+        <div>
+          <h2 className="text-headline-sm text-on-surface">Balance from your old book</h2>
+          <p className="text-body-md text-on-surface-variant">
+            Optional. If this dealer already owed you money, or you owed them, before you started
+            using this app, enter it here. Leave the amount empty if the account was settled.
+          </p>
+        </div>
+        <OpeningFields
+          value={opening}
+          onChange={(patch) => setOpening((o) => ({ ...o, ...patch }))}
+          errors={fieldErrors}
         />
       </Card>
 
