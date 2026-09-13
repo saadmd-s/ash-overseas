@@ -105,6 +105,37 @@ app.get('/api/health', (c) =>
 app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND', message: 'No such route.' } }, 404));
 
 /**
+ * RFC 9116 — where to report a security problem.
+ *
+ * Served by the Worker rather than from public/.well-known, because a
+ * dot-directory is exactly what the asset upload and the file-like 404 rule
+ * below both treat as suspect.
+ *
+ * `Expires` is required and must be under a year out. It is computed — one year
+ * from the first of the current month — rather than hard-coded, so it never
+ * silently lapses. The contact is maintained here in code, which is what keeps
+ * a rolling date honest: if this address changes, this line changes with it.
+ */
+const SECURITY_CONTACT = 'mailto:suhaib.muhammed2002@gmail.com';
+
+app.get('/.well-known/security.txt', (c) => {
+  const now = new Date();
+  const expires = new Date(Date.UTC(now.getUTCFullYear() + 1, now.getUTCMonth(), 1));
+  const { origin } = new URL(c.req.url);
+  return c.text(
+    [
+      `Contact: ${SECURITY_CONTACT}`,
+      `Expires: ${expires.toISOString()}`,
+      'Preferred-Languages: en',
+      `Canonical: ${origin}/.well-known/security.txt`,
+      '',
+    ].join('\n'),
+    200,
+    { 'cache-control': 'public, max-age=86400' },
+  );
+});
+
+/**
  * A missing build asset is a real 404 — never the SPA shell. The same reasoning
  * as /api above, and it has already broken the live site once.
  *

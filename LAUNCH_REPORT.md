@@ -13,7 +13,7 @@
 | P0 — blocker           | 1 real (+5 false positives) | 1     | 0                                    |
 | P1 — before announcing | 7                           | 6     | 1 (extensionless soft 404, accepted) |
 | P2 — this week         | 4                           | 4     | 0                                    |
-| P3 — backlog           | 3                           | 2     | 1 (security.txt, needs a contact)    |
+| P3 — backlog           | 3                           | 3     | 0                                    |
 
 ---
 
@@ -42,6 +42,10 @@
 
 - `src/worker/index.ts` — content-hashed `/assets/*` now `Cache-Control: public, max-age=31536000, immutable` (was `max-age=0, must-revalidate`, a revalidation round trip per file per load). HTML stays `max-age=0`. Verified live.
 
+### Disclosure
+
+- `src/worker/index.ts` — `/.well-known/security.txt` (RFC 9116) with the maintainer's contact, a rolling `Expires` under a year out, and a canonical URL. Tested in `src/worker/security-txt.test.ts`.
+
 ### Content
 
 - `screens/Auth.tsx` — the login panel said "Nothing is ever deleted — corrections are recorded, not erased", contradicting the new **Delete** button. Now "Nothing is ever lost — a deleted entry is kept for your records."
@@ -50,8 +54,7 @@
 
 ## Open — needs a decision
 
-1. **`/.well-known/security.txt`** needs a real contact address for vulnerability reports. Whose email should it list — yours, or your cousin's as the account owner? I have not invented one.
-2. **Error alerting.** Worker logs are on (`observability`), but nothing tells anyone when the app throws. Do you want a free Cloudflare notification or a Sentry project? Either needs an account decision.
+1. **Error alerting.** Cloudflare has no free notification for Worker errors (its notification catalogue lists none for Workers, and standalone Health Checks are not on the Free plan). Worker logs are on. The free options are an in-app error notice or a Sentry free-plan project; see the conversation of 13 Sep 2026.
 
 ---
 
