@@ -44,6 +44,11 @@ export default defineConfig({
             miniflare: {
               d1Databases: ['DB'],
               bindings: { TEST_MIGRATIONS: migrations },
+              // The suite signs in far more than 10 times a minute from one
+              // "IP". The 429 path is tested with a stubbed limiter instead.
+              ratelimits: {
+                LOGIN_LIMITER: { namespace_id: '1001', simple: { limit: 100_000, period: 60 } },
+              },
             },
           }),
         ],

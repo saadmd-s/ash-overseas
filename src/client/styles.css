@@ -196,3 +196,20 @@
     color: inherit;
   }
 }
+
+/*
+ * Date fields: tighter side padding, deliberately OUTSIDE any layer so it wins
+ * over the `px-3` utility in `inputCls`.
+ *
+ * Field text is 16px (see `inputCls` in ui.tsx), and in a half-width column at
+ * 360px Chrome's date field then clipped the last digit of the year behind its
+ * calendar icon. The date is the one input whose content is fixed-width and
+ * always full, so it is the one that gives up padding.
+ */
+input[type='date'] {
+  padding-inline: 0.5rem;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator {
+  margin-inline-start: 0;
+}

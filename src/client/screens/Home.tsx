@@ -59,6 +59,9 @@ import { DealerFields, emptyOpening, OpeningFields, type OpeningDraft } from './
 export function Home({ navigate }: { navigate: (path: string) => void }) {
   return (
     <div className="space-y-6">
+      {/* The page's one h1, for screen readers: the design gives Home no
+          visible title, and the header's echo of it is not a heading. */}
+      <h1 className="sr-only">Home</h1>
       {/*
         The icon sits ABOVE the word rather than beside it.
 
@@ -275,7 +278,14 @@ export function DealerList({
   type?: 'supplier' | 'buyer';
   navigate: (path: string) => void;
 }) {
-  return <DealerRoster type={type} navigate={navigate} />;
+  return (
+    <>
+      <h1 className="sr-only">
+        {type === 'supplier' ? 'Suppliers' : type === 'buyer' ? 'Buyers' : 'Dealers'}
+      </h1>
+      <DealerRoster type={type} navigate={navigate} />
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +593,7 @@ export function NewDealer({
         <button
           type="submit"
           disabled={!name.trim() || saving}
-          className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="flex-1 min-h-11 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {saving ? 'Saving...' : 'Save dealer'}
         </button>

@@ -95,3 +95,6 @@ backups/
 .cache/
 .temp/
 .tmp/
+
+# Pre-launch audit scratch output
+.prelaunch/

@@ -64,26 +64,27 @@ type Variant = 'filled' | 'outline' | 'destructive' | 'text' | 'danger-text';
  * treatment for every filled button means there is no second set of hover
  * tokens to keep in step with the first.
  *
- * Vertical padding is `py-2.5` on top of a text line-height, which lands the
- * control at 44px — the minimum tap target, and the reason this is a padding
- * value rather than a height.
+ * `min-h-11` (44px) on every variant: the minimum touch target. Padding alone
+ * landed the outline and text buttons at 32–38px, which the pre-launch probe
+ * measured — too small for a thumb, and this app's owner is elderly. A button
+ * centres its own content vertically, so the extra height needs no flex.
  */
 const VARIANT: Record<Variant, string> = {
   filled:
-    'rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary ' +
+    'min-h-11 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary ' +
     'transition-opacity hover:opacity-90 disabled:opacity-50',
   outline:
-    'rounded-lg border border-outline-variant px-3 py-2 text-label-caps font-semibold ' +
+    'min-h-11 rounded-lg border border-outline-variant px-3 py-2 text-label-caps font-semibold ' +
     'transition-colors hover:bg-surface-container disabled:opacity-50',
   destructive:
-    'rounded-lg bg-negative px-4 py-2.5 text-label-caps font-semibold text-on-negative ' +
+    'min-h-11 rounded-lg bg-negative px-4 py-2.5 text-label-caps font-semibold text-on-negative ' +
     'transition-opacity hover:opacity-90 disabled:opacity-50',
-  text: 'rounded-lg px-2 py-1.5 text-body-md font-medium text-primary transition-colors hover:bg-surface-container disabled:opacity-50',
+  text: 'min-h-11 rounded-lg px-2 py-1.5 text-body-md font-medium text-primary transition-colors hover:bg-surface-container disabled:opacity-50',
   // A delete link. Its own variant rather than `text` plus an override: two
   // text-colour utilities on one element resolve by stylesheet order, not by
   // which was written last, and the override lost.
   'danger-text':
-    'rounded-lg px-2 py-1.5 text-body-md font-medium text-negative transition-colors hover:bg-negative-container disabled:opacity-50',
+    'min-h-11 rounded-lg px-2 py-1.5 text-body-md font-medium text-negative transition-colors hover:bg-negative-container disabled:opacity-50',
 };
 
 export function Button({
@@ -116,7 +117,7 @@ export function IconButton({
       type="button"
       aria-label={label}
       title={label}
-      className={`grid size-10 place-items-center rounded-lg transition-colors ${
+      className={`grid size-11 place-items-center rounded-lg transition-colors ${
         active
           ? 'bg-surface-container text-primary'
           : 'text-on-surface-variant hover:bg-surface-container-low'
@@ -135,9 +136,14 @@ export function IconButton({
 /**
  * `outline-none` PAIRED WITH `focus:ring-2`. The native outline is replaced,
  * never merely removed — see the note in styles.css.
+ *
+ * `text-body-lg` (16px), not the 14px body default. Below 16px, iOS zooms the
+ * whole page in on every field tap. That used to be suppressed with
+ * `maximum-scale=1` in the viewport, which also blocked pinch-zoom for
+ * everyone — a WCAG 1.4.4 failure, on an app whose owner is elderly.
  */
 export const inputCls =
-  'w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2.5 ' +
+  'w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2.5 text-body-lg ' +
   'outline-none transition-shadow focus:ring-2 focus:ring-primary';
 
 /**
@@ -306,7 +312,7 @@ export function Segmented<T extends string>({
               type="button"
               aria-pressed={active}
               onClick={() => onChange(o.value)}
-              className={`rounded-md px-4 py-1.5 text-body-md font-medium transition-colors ${
+              className={`min-h-11 rounded-md px-4 py-1.5 text-body-md font-medium transition-colors ${
                 active
                   ? tone === 'neutral'
                     ? 'bg-surface-bright text-on-secondary-container shadow-sm'

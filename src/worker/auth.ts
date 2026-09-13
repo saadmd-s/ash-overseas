@@ -76,6 +76,9 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+  // Not one of §16.2's six. A private ledger has no business in a search index:
+  // this keeps even the sign-in page out of it, alongside public/robots.txt.
+  'X-Robots-Tag': 'noindex, nofollow',
 };
 
 export const securityHeaders: MiddlewareHandler = async (c, next) => {
@@ -279,6 +282,28 @@ publicAuth.get('/auth/me', async (c) => {
 
 publicAuth.post('/auth/login', async (c) => {
   if (!gateEnabled(c.env)) return c.json({ ok: true, gate: 'disabled' });
+
+  /*
+   * A cap on attempts per IP, ahead of any work. The fixed delay below makes
+   * each guess slow; it does not stop many guesses in parallel. Per IP rather
+   * than a global lockout, so that someone who knows the URL cannot lock the
+   * owner out from a different network.
+   *
+   * Fails open if the binding is absent — local development and the test
+   * runner. deploy-prod.ts refuses a production build without it.
+   */
+  const limiter = (c.env as { LOGIN_LIMITER?: RateLimit }).LOGIN_LIMITER;
+  if (limiter) {
+    const key = c.req.header('cf-connecting-ip') ?? 'unknown';
+    const { success } = await limiter.limit({ key });
+    if (!success) {
+      return c.json(
+        fail('RATE_LIMITED', 'Too many sign-in attempts. Please wait a minute and try again.'),
+        429,
+        { 'retry-after': '60' },
+      );
+    }
+  }
 
   const parsed = loginSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {

@@ -1,0 +1,3 @@
+# A private, single-user ledger. Nothing here belongs in a search index.
+User-agent: *
+Disallow: /

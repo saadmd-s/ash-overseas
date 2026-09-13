@@ -66,6 +66,14 @@
     },
   ],
 
+  // Per-IP cap on sign-in attempts (see the login route in src/worker/auth.ts).
+  // Cloudflare's rate-limit binding: free, no card, counted at the edge. Bindings
+  // do NOT inherit into an environment, so this is repeated under production,
+  // and scripts/deploy-prod.ts refuses to deploy a build without it.
+  "ratelimits": [
+    { "name": "LOGIN_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+  ],
+
   "env": {
     "production": {
       // The deployed Worker name, and therefore the URL:
@@ -85,6 +93,17 @@
           "database_name": "ledger-prod",
           "database_id": "6f0a0c60-b676-4df0-81c8-050ae3456d37",
           "migrations_dir": "drizzle/migrations",
+        },
+      ],
+      // Per-IP cap on sign-in attempts (see the login route in src/worker/auth.ts).
+      // Cloudflare's rate-limit binding: free, no card, counted at the edge. Bindings
+      // do NOT inherit into an environment, so this is repeated under production,
+      // and scripts/deploy-prod.ts refuses to deploy a build without it.
+      "ratelimits": [
+        {
+          "name": "LOGIN_LIMITER",
+          "namespace_id": "1001",
+          "simple": { "limit": 10, "period": 60 },
         },
       ],
     },

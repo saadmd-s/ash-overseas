@@ -222,7 +222,7 @@ export function DealerDetail({
       <button
         type="button"
         onClick={() => navigate('/dealers')}
-        className="flex items-center gap-1 py-1 text-body-md text-on-surface-variant transition-colors hover:text-primary"
+        className="flex min-h-11 items-center gap-1 py-1 text-body-md text-on-surface-variant transition-colors hover:text-primary"
       >
         <ArrowLeft size={18} aria-hidden="true" />
         All dealers
@@ -591,7 +591,7 @@ function RecordButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-1 rounded-lg bg-primary px-2 py-3 text-on-primary transition-opacity hover:opacity-90 active:scale-[0.98]"
+      className="flex flex-col items-center gap-1 min-h-11 rounded-lg bg-primary px-2 py-3 text-on-primary transition-opacity hover:opacity-90 active:scale-[0.98]"
     >
       {icon}
       <span className="text-body-md font-semibold">{label}</span>
@@ -664,7 +664,7 @@ function EditDealerDialog({
           <button
             type="submit"
             disabled={!name.trim() || busy}
-            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex-1 min-h-11 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {busy ? 'Saving...' : 'Save'}
           </button>
@@ -799,7 +799,7 @@ function AddOpeningDialog({
           <button
             type="submit"
             disabled={!canSave}
-            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex-1 min-h-11 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {busy ? 'Saving...' : 'Save'}
           </button>

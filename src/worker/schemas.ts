@@ -69,7 +69,6 @@ export const createDealerSchema = z.object({
   opening: openingSchema.optional(),
 });
 
-
 const transactionLine = z.object({
   itemName: z.string().trim().nullish(),
   // Quantity is NOT money — it may legitimately be fractional (9,510.5 kg).

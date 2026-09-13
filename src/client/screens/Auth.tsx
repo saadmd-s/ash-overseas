@@ -90,8 +90,8 @@ export function Login({ auth, onSignedIn }: { auth: AuthState; onSignedIn: () =>
         <div className="relative hidden lg:block">
           <h1 className="text-display-lg text-on-primary">Your ledger, always in balance.</h1>
           <p className="mt-3 max-w-sm text-body-lg text-on-primary/70">
-            One running balance for every dealer, in plain language. Nothing is ever deleted —
-            corrections are recorded, not erased.
+            One running balance for every dealer, in plain language. Nothing is ever lost — a
+            deleted entry is kept for your records.
           </p>
         </div>
 
@@ -110,7 +110,10 @@ export function Login({ auth, onSignedIn }: { auth: AuthState; onSignedIn: () =>
           }}
         >
           <div>
-            <h2 className="text-headline-md text-on-surface">Sign in</h2>
+            {/* The page's h1 below lg, where the brand panel's headline is
+                hidden; an h2 from lg up, where that headline is the h1. */}
+            <h1 className="text-headline-md text-on-surface lg:hidden">Sign in</h1>
+            <h2 className="hidden text-headline-md text-on-surface lg:block">Sign in</h2>
             <p className="text-body-md text-on-surface-variant">Sign in to open the ledger.</p>
           </div>
 
@@ -143,7 +146,7 @@ export function Login({ auth, onSignedIn }: { auth: AuthState; onSignedIn: () =>
           <button
             type="submit"
             disabled={!username || !password || busy}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 min-h-11 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {/* The wrong-password path waits half a second on purpose (§16.1),
                 so the button has to say something during it or the application
@@ -190,7 +193,7 @@ function IconField({
       <span className="flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-bright px-3 transition-shadow focus-within:ring-2 focus-within:ring-primary">
         <span className="text-on-surface-variant">{icon}</span>
         <input
-          className="w-full bg-transparent py-2.5 outline-none"
+          className="w-full bg-transparent py-2.5 text-body-lg outline-none"
           type={type}
           autoComplete={autoComplete}
           autoCapitalize="none"
@@ -395,7 +398,7 @@ function CredentialForm({
         <button
           type="submit"
           disabled={!currentPassword || !next || busy}
-          className="w-full rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="w-full min-h-11 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {busy ? 'Saving...' : title}
         </button>
@@ -432,7 +435,7 @@ function SignOut() {
         setBusy(true);
         void signOut();
       }}
-      className="flex items-center gap-2 text-body-md font-medium text-negative disabled:opacity-50"
+      className="flex min-h-11 items-center gap-2 text-body-md font-medium text-negative disabled:opacity-50"
     >
       <LogOut size={18} aria-hidden="true" />
       {busy ? 'Signing out...' : 'Sign out'}

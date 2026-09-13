@@ -94,6 +94,7 @@ const built = JSON.parse(readFileSync(builtConfigPath, 'utf8')) as {
   name?: string;
   vars?: Record<string, unknown>;
   d1_databases?: { database_name?: string }[];
+  ratelimits?: { name?: string }[];
 };
 
 const appEnv = built.vars?.APP_ENV;
@@ -110,6 +111,13 @@ if (appEnv !== ENV || database !== 'ledger-prod') {
       '  This is the CLOUDFLARE_ENV trap. See the note at the top of this file.',
     ].join('\n'),
   );
+}
+
+// The login rate limit fails OPEN when its binding is missing (so local
+// development and tests without it still work). Production must never be that
+// build.
+if (!built.ratelimits?.some((r) => r.name === 'LOGIN_LIMITER')) {
+  fail('The production build has no LOGIN_LIMITER rate-limit binding. Refusing to deploy.');
 }
 
 console.log(`- Built for ${ENV}: worker "${built.name}", database ${database}.`);

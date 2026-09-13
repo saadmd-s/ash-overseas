@@ -49,6 +49,14 @@ export function AppShell({
 }) {
   return (
     <div className="min-h-dvh lg:flex">
+      {/* Invisible until focused: the first Tab stop, so a keyboard user can
+          skip the navigation on every screen. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-3 focus:text-on-primary"
+      >
+        Skip to content
+      </a>
       <Sidebar active={active} navigate={navigate} />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -64,7 +72,9 @@ export function AppShell({
           hidden behind it, and `lg:pb-8` drops that padding on desktop where
           no tab bar exists.
         */}
-        <main className="flex-1 p-4 pb-24 lg:p-8 lg:pb-8">{children}</main>
+        <main id="main" tabIndex={-1} className="flex-1 p-4 pb-24 outline-none lg:p-8 lg:pb-8">
+          {children}
+        </main>
       </div>
 
       <BottomTabs active={active} navigate={navigate} />
@@ -120,7 +130,7 @@ function Sidebar({ active, navigate }: { active: NavKey; navigate: (path: string
         <button
           type="button"
           onClick={() => navigate('/dealers/new')}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90"
+          className="flex w-full items-center justify-center gap-2 min-h-11 rounded-lg bg-primary px-4 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90"
         >
           <Plus size={18} aria-hidden="true" />
           New dealer
@@ -172,15 +182,20 @@ function Header({
         </span>
       </span>
 
-      <h1 className="hidden min-w-0 flex-1 truncate text-headline-sm text-on-surface lg:block">
+      {/* Not an h1: every screen carries its own, and two per page is one
+          too many. This is the desktop header's echo of it. */}
+      <p
+        aria-hidden="true"
+        className="hidden min-w-0 flex-1 truncate text-headline-sm text-on-surface lg:block"
+      >
         {title}
-      </h1>
+      </p>
 
       <div className="ml-auto flex items-center gap-2">
         <button
           type="button"
           onClick={() => navigate('/settings')}
-          className={`flex items-center gap-2 rounded-lg px-2 py-2 text-body-md transition-colors ${
+          className={`flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-body-md transition-colors ${
             accountActive
               ? 'bg-surface-container text-primary'
               : 'text-on-surface-variant hover:bg-surface-container-low'
@@ -194,7 +209,7 @@ function Header({
         <button
           type="button"
           onClick={() => navigate('/dealers/new')}
-          className="flex items-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90"
+          className="flex items-center gap-2 min-h-11 rounded-lg bg-primary px-3 py-2.5 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90"
         >
           <Plus size={18} aria-hidden="true" />
           New dealer
@@ -237,13 +252,14 @@ function BottomTabs({ active, navigate }: { active: NavKey; navigate: (path: str
               <Icon size={21} aria-hidden="true" />
             </span>
             {/*
-              ACKNOWLEDGED EXCEPTION to the "no raw sizes" rule: 12px was
-              measurably too wide for four labels at 360px. This is one of two
-              such exceptions in the application; the other is the audit-log
-              JSON block.
+              ACKNOWLEDGED EXCEPTION to the "no raw sizes" rule, one of two in
+              the application (the other is the audit-log JSON block). 12px,
+              the smallest size the pre-launch probe accepts on mobile; it was
+              11px, but the four labels fit at 12px in 90px columns at 360px
+              with room to spare (checked in headless Chrome).
             */}
             <span
-              className={`text-[11px] leading-none ${
+              className={`text-[12px] leading-none ${
                 isActive ? 'font-semibold text-primary' : 'text-on-surface-variant'
               }`}
             >

@@ -162,7 +162,7 @@ export function MoneyInput({ label, value, onChange, required, error, hint }: Mo
         </span>
         <input
           id={id}
-          className="tnum w-full bg-transparent py-2.5 outline-none"
+          className="tnum w-full bg-transparent py-2.5 text-body-lg outline-none"
           inputMode="decimal"
           autoComplete="off"
           value={text}
@@ -314,7 +314,7 @@ export function ExportMenu({ path, label = 'Download' }: { path: string; label?:
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-body-md transition-colors hover:bg-surface-container"
+            className="flex min-h-11 w-full items-center gap-2 px-3 py-2.5 text-left text-body-md transition-colors hover:bg-surface-container"
             onClick={() => void run('xlsx')}
           >
             <FileSpreadsheet size={18} aria-hidden="true" />
@@ -323,7 +323,7 @@ export function ExportMenu({ path, label = 'Download' }: { path: string; label?:
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 border-t border-outline-variant px-3 py-2.5 text-left text-body-md transition-colors hover:bg-surface-container"
+            className="flex min-h-11 w-full items-center gap-2 border-t border-outline-variant px-3 py-2.5 text-left text-body-md transition-colors hover:bg-surface-container"
             onClick={() => void run('csv')}
           >
             <FileSpreadsheet size={18} aria-hidden="true" />

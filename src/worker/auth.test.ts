@@ -362,6 +362,11 @@ describe('Security headers — §16.2', () => {
     );
   });
 
+  it('keeps the app out of search indexes', async () => {
+    const res = await req('/api/auth/me');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
   it('sets them on a 401 as well, not only on a success', async () => {
     const res = await req('/api/dealers');
     expect(res.status).toBe(401);
@@ -461,6 +466,69 @@ describe('Gate disabled — local development only (§16.1)', () => {
 
   it('still sets the security headers', async () => {
     expect((await req('/api/health')).headers.get('x-frame-options')).toBe('DENY');
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('Sign-in rate limit', () => {
+  const limiterEnv = env as { LOGIN_LIMITER?: RateLimit };
+  let real: RateLimit | undefined;
+
+  beforeEach(async () => {
+    await seedCredentials();
+    real = limiterEnv.LOGIN_LIMITER;
+  });
+
+  afterEach(() => {
+    limiterEnv.LOGIN_LIMITER = real;
+  });
+
+  it('refuses with 429 once the per-IP limit is spent, before checking the password', async () => {
+    const keys: string[] = [];
+    limiterEnv.LOGIN_LIMITER = {
+      limit: async ({ key }: { key: string }) => {
+        keys.push(key);
+        return { success: false };
+      },
+    } as RateLimit;
+
+    const res = await req('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
+      headers: { 'cf-connecting-ip': '203.0.113.7' },
+    });
+
+    // Even the RIGHT password is refused: the limit is checked first.
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toBe('60');
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('RATE_LIMITED');
+    expect(keys).toEqual(['203.0.113.7']);
+  });
+
+  it('lets a sign-in through while the limit has room', async () => {
+    limiterEnv.LOGIN_LIMITER = { limit: async () => ({ success: true }) } as RateLimit;
+    const res = await postJson('/api/auth/login', { username: USERNAME, password: PASSWORD });
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('HTTPS only in production', () => {
+  afterEach(() => {
+    (env as { APP_ENV?: string }).APP_ENV = 'development';
+  });
+
+  it('redirects plain http to https, keeping the path and query', async () => {
+    (env as { APP_ENV?: string }).APP_ENV = 'production';
+    const res = await SELF.fetch('http://x/dealers/1?from=2026-04-01', { redirect: 'manual' });
+    expect(res.status).toBe(301);
+    expect(res.headers.get('location')).toBe('https://x/dealers/1?from=2026-04-01');
+  });
+
+  it('leaves http alone in development', async () => {
+    const res = await SELF.fetch('http://x/api/auth/me', { redirect: 'manual' });
+    expect(res.status).toBe(200);
   });
 });
 

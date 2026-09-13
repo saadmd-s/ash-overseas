@@ -428,7 +428,7 @@ export function TransactionForm({
         type="button"
         aria-expanded={showMore}
         onClick={() => setShowMore((v) => !v)}
-        className="flex items-center gap-1 text-body-md font-medium text-primary"
+        className="flex min-h-11 items-center gap-1 text-body-md font-medium text-primary"
       >
         <ChevronDown
           size={18}
@@ -527,7 +527,7 @@ export function TransactionForm({
         <button
           type="submit"
           disabled={!canSave}
-          className="flex-1 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="flex-1 min-h-11 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {saving ? 'Saving...' : `Save ${form.mode}`}
         </button>

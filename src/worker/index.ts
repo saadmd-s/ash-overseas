@@ -34,6 +34,23 @@ const app = new Hono<{ Bindings: Env }>();
 app.use('*', securityHeaders);
 
 /**
+ * 1b. HTTPS only, in production.
+ *
+ * HSTS protects a browser that has already visited over https. It does nothing
+ * for the first request typed as plain http, and on that request the sign-in
+ * form would post the password unencrypted. Local development is http and is
+ * left alone.
+ */
+app.use('*', async (c, next) => {
+  const url = new URL(c.req.url);
+  if (c.env.APP_ENV === 'production' && url.protocol === 'http:') {
+    url.protocol = 'https:';
+    return c.redirect(url.toString(), 301);
+  }
+  return next();
+});
+
+/**
  * 2. §16.1 — "the build must refuse to start in production mode without it".
  *
  * A missing `AUTH_SECRET` silently disables the gate, which would leave the
@@ -110,7 +127,14 @@ app.get('/assets/*', async (c) => {
   if (res.headers.get('content-type')?.startsWith('text/html')) {
     return c.text('Not found', 404);
   }
-  return res;
+  if (!res.ok) return res;
+
+  // Content-hashed, so a given URL can never change: cache it for a year. The
+  // HTML that names these files stays max-age=0, which is what makes a deploy
+  // take effect.
+  const cached = new Response(res.body, res);
+  cached.headers.set('cache-control', 'public, max-age=31536000, immutable');
+  return cached;
 });
 
 /**
@@ -122,7 +146,25 @@ app.get('/assets/*', async (c) => {
  * actual data arrives over `/api`, which is behind the gate above — so §16.1's
  * "gates the entire application" is satisfied where it matters, at the data.
  */
-app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
+app.all('*', async (c) => {
+  const res = await c.env.ASSETS.fetch(c.req.raw);
+
+  /*
+   * A request for a FILE that does not exist is a real 404, not the app shell.
+   * `/.env`, `/.git/HEAD`, `/backup.zip`: none of these exist, but the SPA
+   * fallback answered each with index.html and a 200, which every security
+   * scanner reports as an exposed secret. App routes never contain a dot or a
+   * dot-segment, so this cannot catch one.
+   */
+  const { pathname } = new URL(c.req.url);
+  const segments = pathname.split('/').filter(Boolean);
+  const fileLike =
+    segments.some((s) => s.startsWith('.')) || (segments.at(-1)?.includes('.') ?? false);
+  if (fileLike && res.headers.get('content-type')?.startsWith('text/html')) {
+    return c.text('Not found', 404);
+  }
+  return res;
+});
 
 /**
  * Uncaught errors — §14 and §16.3.

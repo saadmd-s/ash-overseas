@@ -204,7 +204,7 @@ export function PaymentForm({
         <button
           type="submit"
           disabled={!canSave}
-          className="flex-1 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="flex-1 min-h-11 rounded-lg bg-primary px-4 py-3 text-label-caps font-semibold text-on-primary transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           {saving ? 'Saving...' : 'Save payment'}
         </button>
