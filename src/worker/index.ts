@@ -88,6 +88,32 @@ app.get('/api/health', (c) =>
 app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND', message: 'No such route.' } }, 404));
 
 /**
+ * A missing build asset is a real 404 — never the SPA shell. The same reasoning
+ * as /api above, and it has already broken the live site once.
+ *
+ * Bundles are content-hashed, so every deploy renames them. Any page still
+ * holding the previous HTML — an open tab, or a service-worker cache — asks for
+ * `/assets/index-<old hash>.js`, which no longer exists. `single-page-application`
+ * not-found handling answered that with index.html and a 200. The browser then
+ * refused to execute HTML as a module script and the owner got a blank white
+ * page, with the real cause ("Expected a JavaScript module script but the server
+ * responded with a MIME type of text/html") only visible in DevTools.
+ *
+ * Worse, a 200 is cacheable: the service worker stored that HTML under the .js
+ * URL. A 404 is not, so the mistake cannot persist.
+ *
+ * Nothing under /assets/ is ever legitimately HTML, which is what makes the
+ * content-type a safe signal that the fallback fired.
+ */
+app.get('/assets/*', async (c) => {
+  const res = await c.env.ASSETS.fetch(c.req.raw);
+  if (res.headers.get('content-type')?.startsWith('text/html')) {
+    return c.text('Not found', 404);
+  }
+  return res;
+});
+
+/**
  * Everything else is the SPA shell.
  *
  * The shell is served unauthenticated, deliberately: it is an empty document

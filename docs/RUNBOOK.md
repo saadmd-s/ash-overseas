@@ -449,3 +449,15 @@ data:
 8. **`.dev.vars` is loaded by the test runner.** The suite resets `AUTH_SECRET`
    before every test so results do not depend on whether your machine has that
    file. If you add a test that cares about the gate, arm it explicitly.
+
+9. **The service worker must never serve the HTML page from cache while
+   online.** It once did — `/` cache-first under a cache name that never
+   changed — and after a redeploy the owner's phone kept loading old HTML that
+   asked for bundles which no longer existed. The server answered those with
+   `index.html` and a 200, the browser refused to run HTML as a script, and the
+   site was a blank page for the one person who had visited before, while
+   working for everyone else. `public/sw.js` is now network-first for
+   navigations, and missing `/assets/*` are a real 404. **If you change the
+   caching rules in `sw.js`, bump `SHELL`** — that is what clears old caches.
+   If a phone is ever stuck on a blank page, reloading twice lets the new worker
+   take over; clearing site data for the URL fixes it immediately.
