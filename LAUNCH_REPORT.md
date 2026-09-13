@@ -54,7 +54,7 @@
 
 ## Open — needs a decision
 
-1. **Error alerting.** Cloudflare has no free notification for Worker errors (its notification catalogue lists none for Workers, and standalone Health Checks are not on the Free plan). Worker logs are on. The free options are an in-app error notice or a Sentry free-plan project; see the conversation of 13 Sep 2026.
+None. **Error alerting was skipped by the owner on 13 Sep 2026.** Cloudflare has no free notification for Worker errors; the free options (a Sentry free-plan project, or an in-app error notice) remain available if wanted later. Worker logs are on in the meantime.
 
 ---
 
