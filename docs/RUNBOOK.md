@@ -377,9 +377,11 @@ Everything above has been verified by running it. These four cannot be, from a
 terminal, and should be walked through once before the owner starts entering real
 data:
 
-1. **The interface at 360 px.** It is built mobile-first with 44 px tap targets
-   and it has never been looked at on a phone. NFR-U2 asks for one-handed use at
-   360 px; that is a judgement only an eye can make.
+1. **The interface on a real phone.** Every screen has been checked at 360, 375,
+   768 and 1280 px in headless Chrome (no horizontal overflow, 44 px touch
+   targets, visible keyboard focus, no console errors — see LAUNCH_REPORT.md).
+   What an emulator cannot judge is one-handed use, touch feel and the iOS
+   keyboard; NFR-U2 needs an eye on a real device.
 2. **An Excel and a CSV download actually save.** The workbook is built in the
    browser and handed over as a `blob:` object URL. Downloads started by
    `<a download>` are not governed by CSP fetch directives, so
@@ -388,10 +390,8 @@ data:
 3. **The PWA installs and the shell loads offline**, while `/api` still refuses
    to serve anything from cache. A stale balance is a dangerous balance, which is
    why `public/sw.js` returns early for every `/api` path.
-4. **The entry detail sheet at 360 px.** It is the tallest thing in the
-   application — figures, one field per line item, notes, and the record's own
-   history — and it scrolls inside a `max-h-[90vh]` dialog. Its behaviour is
-   covered by tests; its shape on a phone is not.
+4. **The entry detail sheet on a real phone.** Checked at 360 px in headless
+   Chrome; its scrolling inside the bottom sheet has not been felt by a thumb.
 
 ---
 
@@ -468,3 +468,16 @@ data:
    caching rules in `sw.js`, bump `SHELL`** — that is what clears old caches.
    If a phone is ever stuck on a blank page, reloading twice lets the new worker
    take over; clearing site data for the URL fixes it immediately.
+
+10. **The login rate limit fails open without its binding.** `LOGIN_LIMITER` is
+    a Cloudflare rate-limit binding (10 sign-in attempts a minute per IP), and
+    bindings do not inherit into `env.production` — it is declared twice in
+    `wrangler.jsonc`. Without it the login route skips the check rather than
+    breaking local development and tests, so `scripts/deploy-prod.ts` refuses a
+    production build that lacks it. The limit is approximate and counted per
+    Cloudflare location by design: it slows a guessing run, it does not count
+    exactly.
+11. **`wrangler types` reads `.dev.vars`.** Regenerating the binding types adds
+    `AUTH_SECRET: string` to `worker-configuration.d.ts`, which breaks the
+    typecheck — the Worker declares it optional, because unset is a real state.
+    Delete those generated lines after running it.
