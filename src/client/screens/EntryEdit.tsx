@@ -17,9 +17,16 @@
  */
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { api, formatDate, formatInstant, RequestFailed, type BankAccount } from '../lib';
+import {
+  api,
+  formatDate,
+  formatInstant,
+  REFERENCE_TAG_HINT,
+  RequestFailed,
+  type BankAccount,
+} from '../lib';
 import { Money } from '../components';
-import { Button, Chip, ErrorState, Loading, Modal, inputCls, panelCls } from '../ui';
+import { Button, Chip, ErrorState, Field, Loading, Modal, inputCls, panelCls } from '../ui';
 
 interface TransactionRow {
   id: number;
@@ -188,15 +195,17 @@ export function EntryEditDialog({
             </p>
           </div>
 
-          <label className="block space-y-1">
-            <span className="text-label-caps uppercase text-on-surface-variant">Reference tag</span>
-            <input
-              className={inputCls}
-              value={referenceTag}
-              onChange={(e) => setReferenceTag(e.target.value)}
-              placeholder="ASH 39"
-            />
-          </label>
+          <Field label="Reference tag (optional)" hint={REFERENCE_TAG_HINT}>
+            {({ id, describedBy }) => (
+              <input
+                id={id}
+                aria-describedby={describedBy}
+                className={inputCls}
+                value={referenceTag}
+                onChange={(e) => setReferenceTag(e.target.value)}
+              />
+            )}
+          </Field>
 
           {detail.lines.map((line) => (
             <label key={line.id} className="block space-y-1">

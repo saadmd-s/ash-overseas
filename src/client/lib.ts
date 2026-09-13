@@ -238,3 +238,11 @@ export async function downloadExport(path: string, format: 'xlsx' | 'csv'): Prom
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * The one line under every reference tag input. The tag is the owner's own
+ * free-text label; when set, it replaces the invoice number as the entry's
+ * line in the dealer's history (post.ts, `description`).
+ */
+export const REFERENCE_TAG_HINT =
+  "Your own short label for this entry, such as a lot, lorry or file number. If filled in, it is shown in the dealer's history instead of the invoice number.";

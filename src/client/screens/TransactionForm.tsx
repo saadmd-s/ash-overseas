@@ -22,7 +22,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { formatPaise, lineAmount, transactionTotals } from '../../money';
-import { api, draft, RequestFailed, todayIST, type BankAccount, type Dealer } from '../lib';
+import {
+  api,
+  draft,
+  REFERENCE_TAG_HINT,
+  RequestFailed,
+  todayIST,
+  type BankAccount,
+  type Dealer,
+} from '../lib';
 import { Money, MoneyInput } from '../components';
 import { Button, Card, Field, Labeled, Segmented, inputCls, panelCls } from '../ui';
 
@@ -434,12 +442,16 @@ export function TransactionForm({
       {showMore && (
         <div className={`${panelCls} space-y-4`}>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Reference tag" hint="Your own label">
-              {({ id }) => (
+            <Field
+              className="col-span-2"
+              label="Reference tag (optional)"
+              hint={REFERENCE_TAG_HINT}
+            >
+              {({ id, describedBy }) => (
                 <input
                   id={id}
+                  aria-describedby={describedBy}
                   className={inputCls}
-                  placeholder="ASH 39"
                   value={form.referenceTag}
                   onChange={(e) => update({ referenceTag: e.target.value })}
                 />
