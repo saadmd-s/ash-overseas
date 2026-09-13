@@ -167,7 +167,6 @@ export function EntryEditDialog({
       {detail && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Chip>{detail.transaction.humanId}</Chip>
             <Chip>{detail.transaction.bankAccount === 'od' ? 'OD' : 'Current'}</Chip>
             {detail.transaction.isVoided && <Chip tone="negative">Voided</Chip>}
             <span className="text-body-md text-on-surface-variant">
@@ -259,6 +258,16 @@ export function EntryEditDialog({
               {saving ? 'Saving...' : 'Save changes'}
             </button>
           </div>
+
+          {/*
+            The entry number sits down here on purpose. It is the app's own
+            permanent ID, not something the owner typed, and as a chip at the
+            top it read as a field to fill in. It is still here for matching an
+            entry against the audit log or a save message.
+          */}
+          <p className="text-body-md text-on-surface-variant">
+            Entry no. <span className="tnum">{detail.transaction.humanId}</span>
+          </p>
 
           {detail.audit.length > 0 && (
             <details>
