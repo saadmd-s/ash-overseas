@@ -308,7 +308,7 @@ export interface CreatePaymentInput {
   entryDate: string;
   direction: 'received' | 'paid';
   amountPaise: Paise;
-  method?: 'cash' | 'bank' | 'cheque' | 'upi' | null;
+  method?: 'cash' | 'bank' | 'netbanking' | 'cheque' | 'upi' | null;
   bankAccount?: BankAccount | null;
   reference?: string | null;
   notes?: string | null;

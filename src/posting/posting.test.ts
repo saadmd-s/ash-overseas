@@ -410,4 +410,19 @@ describe('Payments — method and bank tag (FR-P2)', () => {
     const [row] = await db.select().from(schema.payments).where(eq(schema.payments.id, created.id));
     expect(row.bankAccount).toBeNull();
   });
+
+  it('records net banking with its bank account', async () => {
+    const created = await createPayment(db, {
+      dealerId,
+      entryDate: '2026-08-01',
+      direction: 'paid',
+      amountPaise: 100_000,
+      method: 'netbanking',
+      bankAccount: 'current',
+    });
+
+    const [row] = await db.select().from(schema.payments).where(eq(schema.payments.id, created.id));
+    expect(row.method).toBe('netbanking');
+    expect(row.bankAccount).toBe('current');
+  });
 });

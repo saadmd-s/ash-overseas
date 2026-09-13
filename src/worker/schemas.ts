@@ -109,7 +109,7 @@ export const createPaymentSchema = z.object({
   entryDate,
   direction: z.enum(['received', 'paid']),
   amountPaise: positivePaise,
-  method: z.enum(['cash', 'bank', 'cheque', 'upi']).nullish(),
+  method: z.enum(['cash', 'bank', 'netbanking', 'cheque', 'upi']).nullish(),
   bankAccount: bankAccount.nullish(),
   reference: z.string().trim().nullish(),
   notes: z.string().trim().nullish(),

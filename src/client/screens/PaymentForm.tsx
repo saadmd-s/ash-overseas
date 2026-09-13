@@ -11,7 +11,7 @@ import { api, draft, RequestFailed, todayIST, type BankAccount, type Dealer } fr
 import { MoneyInput } from '../components';
 import { Button, Card, Field, Labeled, Segmented, inputCls, panelCls } from '../ui';
 
-type Method = 'cash' | 'bank' | 'cheque' | 'upi';
+type Method = 'cash' | 'bank' | 'netbanking' | 'cheque' | 'upi';
 
 interface FormDraft {
   entryDate: string;
@@ -147,6 +147,7 @@ export function PaymentForm({
             <option value="">Not recorded</option>
             <option value="cash">Cash</option>
             <option value="bank">Bank</option>
+            <option value="netbanking">Net banking</option>
             <option value="cheque">Cheque</option>
             <option value="upi">UPI</option>
           </select>

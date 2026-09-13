@@ -30,7 +30,7 @@ bar below it. Every canonical class string lives in `src/client/ui.tsx`; no
 component holds a raw hex or px value. Behaviour, routes and API calls are
 unchanged.
 
-**214 tests green**: the six §6 scenarios at **both** the pure and
+**215 tests green**: the six §6 scenarios at **both** the pure and
 D1-integration level, the §15.3 atomicity test, the Phase 2 reconciliation gate,
 the Phase 3 auth gate, and the edit/filter/cursor suite.
 

@@ -95,7 +95,7 @@ export const payments = sqliteTable(
     entryDate: text('entry_date').notNull(), // 'YYYY-MM-DD'
     direction: text('direction', { enum: ['received', 'paid'] }).notNull(), // received = from dealer
     amountPaise: integer('amount_paise').notNull(),
-    method: text('method', { enum: ['cash', 'bank', 'cheque', 'upi'] }),
+    method: text('method', { enum: ['cash', 'bank', 'netbanking', 'cheque', 'upi'] }),
     bankAccount: text('bank_account', { enum: ['od', 'current'] }),
     reference: text('reference'),
     notes: text('notes'),

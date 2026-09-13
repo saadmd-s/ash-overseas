@@ -110,7 +110,7 @@ CREATE TABLE payments (
   entry_date    TEXT    NOT NULL,
   direction     TEXT    NOT NULL,                     -- received | paid
   amount_paise  INTEGER NOT NULL,                     -- > 0
-  method        TEXT,                                 -- cash | bank | cheque | upi
+  method        TEXT,                                 -- cash | bank | netbanking | cheque | upi
   bank_account  TEXT,                                 -- omitted for cash
   reference     TEXT,
   notes         TEXT,

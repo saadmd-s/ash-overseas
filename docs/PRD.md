@@ -151,7 +151,7 @@ inside the same atomic write.
 ### 6.3 Record money — FR-P1…P3
 
 Money received from or paid to a dealer, on a date, amount greater than zero.
-Optional method (cash / bank / cheque / UPI), reference (cheque no., UTR), bank
+Optional method (cash / bank / net banking / cheque / UPI), reference (cheque no., UTR), bank
 account tag (hidden for cash), notes.
 
 ### 6.4 See the position — FR-L1…L5, FR-N1…N4
