@@ -98,3 +98,7 @@ backups/
 
 # Pre-launch audit scratch output
 .prelaunch/
+
+# Python backup tooling
+__pycache__/
+*.pyc

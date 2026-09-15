@@ -85,3 +85,15 @@ describe('reorderDump', () => {
     expect(() => reorderDump('')).not.toThrow();
   });
 });
+
+it('preserves SQL-looking lines inside multiline notes', () => {
+  const insertion =
+    "INSERT INTO notes VALUES ('Owner''s note\nCREATE TABLE example;\nDELETE FROM example;');";
+  const dump = insertion + '\nCREATE TABLE notes (text TEXT);';
+  const { text } = reorderDump(dump);
+  expect(text).toContain(insertion);
+  expect(text.indexOf('CREATE TABLE notes')).toBeLessThan(text.indexOf(insertion));
+});
+it('rejects an incomplete string rather than publishing a damaged dump', () => {
+  expect(() => reorderDump("INSERT INTO notes VALUES ('cut off")).toThrow('Incomplete');
+});

@@ -35,3 +35,7 @@
 Existing data is not automatically repaired by this migration. If an earlier overlapping save affected stored balances, inspect ledger integrity and reconcile source entries before using the existing recompute maintenance helper; never invent or discard financial records to make totals match. Retain retry receipts in backups: deleting them removes deduplication for older retry keys. A response replay returns the original save result, not a freshly queried current balance.
 
 Owner choices in SRS ?22 remain unchanged (cash bank tag, default history order, payments in the all-transactions export, and branding).
+
+## Weekly backup implementation
+
+Added a Sunday 03:47 IST workflow with manual dispatch, isolated SQLite restore verification of every running balance, public-key encryption, 90-day encrypted artifacts, and an external missed-run/failure heartbeat. Eight offline backup tests and nine export tests passed; TypeScript and ESLint passed. The SQL exporter now preserves SQL-looking lines inside multiline notes. This is implemented locally, **not yet activated or verified against production**. Complete the browser/account steps and first download/decrypt check in [docs/BACKUP_SETUP.md](docs/BACKUP_SETUP.md). Monthly independent copies and the populated D1 restore drill remain required.

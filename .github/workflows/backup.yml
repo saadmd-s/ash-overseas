@@ -1,0 +1,101 @@
+name: Weekly database backup
+
+on:
+  schedule:
+    # Saturday 22:17 UTC = Sunday 03:47 Asia/Kolkata.
+    - cron: '17 22 * * 6'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.event.repository.private == true && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Check configuration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          BACKUP_PUBLIC_KEY: ${{ secrets.BACKUP_PUBLIC_KEY }}
+          BACKUP_KEY_FINGERPRINT: ${{ vars.BACKUP_KEY_FINGERPRINT }}
+          BACKUP_HEARTBEAT_URL: ${{ secrets.BACKUP_HEARTBEAT_URL }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          for name in ('CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'BACKUP_PUBLIC_KEY', 'BACKUP_KEY_FINGERPRINT', 'BACKUP_HEARTBEAT_URL'):
+              if not os.getenv(name):
+                  raise SystemExit('Missing configuration: ' + name)
+          if not re.fullmatch(r'https://hc-ping.com/[0-9a-fA-F-]{36}', os.environ['BACKUP_HEARTBEAT_URL']):
+              raise SystemExit('Use the Healthchecks UUID ping URL without a trailing slash.')
+          PY
+          command -v gpg
+      - run: pnpm install --frozen-lockfile
+      - name: Export production SQL
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BACKUP_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          umask 077
+          mkdir -p backups
+          # Capture diagnostics: an export error could include SQL or a download URL.
+          if ! node scripts/db-export.ts --env production --database ledger-prod --output backups/ledger-prod.sql > backups/export.log 2>&1; then
+            echo '::error::D1 export failed. Check token permissions, account configuration, and Cloudflare status. Private diagnostics were withheld.'
+            exit 1
+          fi
+      - name: Restore and verify every stored balance
+        run: python3 scripts/verify-backup.py backups/ledger-prod.sql --report backups/verification.json
+      - name: Encrypt package
+        env:
+          BACKUP_PUBLIC_KEY: ${{ secrets.BACKUP_PUBLIC_KEY }}
+          BACKUP_KEY_FINGERPRINT: ${{ vars.BACKUP_KEY_FINGERPRINT }}
+        run: |
+          umask 077
+          filename="ledger-prod-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.tar.gz.gpg"
+          python3 scripts/package-backup.py backups/ledger-prod.sql backups/verification.json "backups/encrypted/$filename"
+      - name: Store encrypted backup for 90 days
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ledger-prod-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            backups/encrypted/*.gpg
+            backups/encrypted/*.sha256
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+      - name: Report successful backup
+        env:
+          BACKUP_HEARTBEAT_URL: ${{ secrets.BACKUP_HEARTBEAT_URL }}
+        run: |
+          curl --fail --silent --show-error --max-time 15 --retry 3 --output /dev/null "$BACKUP_HEARTBEAT_URL"
+          echo 'Encrypted backup uploaded. Retention: 90 days. Download a monthly copy to independent storage.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Report failure
+        if: failure()
+        env:
+          BACKUP_HEARTBEAT_URL: ${{ secrets.BACKUP_HEARTBEAT_URL }}
+        run: |
+          if [[ "$BACKUP_HEARTBEAT_URL" =~ ^https://hc-ping.com/[0-9a-fA-F-]{36}$ ]]; then
+            curl --fail --silent --show-error --max-time 15 --retry 2 --output /dev/null "${BACKUP_HEARTBEAT_URL}/fail" || true
+          fi
+          echo '::error::Backup did not complete. Check this run and your last retained backup.'
+      - name: Remove runner backup files
+        if: always()
+        run: |
+          # Fixed workspace-owned directory; never upload raw SQL, manifests or logs.
+          rm -rf -- "$GITHUB_WORKSPACE/backups"

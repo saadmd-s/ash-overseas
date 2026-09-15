@@ -496,3 +496,7 @@ All writes that change dealers, transaction details or ledger balances must use 
 The migration does not repair historical incorrect balances. Reconcile source records and inspect `checkLedgerIntegrity` before any targeted maintenance replay. `recomputeLedger` now performs its updates and audit atomically. Back up before maintenance and verify exact paise afterward.
 
 Keep both new tables in full backups. Retry receipts deliberately have no automatic expiry: purging them permits old keys to create another entry. If rollback of application code becomes necessary, leave the additive tables in place; the old version still has the concurrency defects and should not resume normal financial entry until repaired. This release has not had a production rollback drill.
+
+## Automated weekly backups
+
+The weekly encrypted GitHub Actions export is implemented in `.github/workflows/backup.yml`. It still requires account setup and the first successful production download/decrypt check. Follow [BACKUP_SETUP.md](BACKUP_SETUP.md) for all browser steps, retention, alerts, and recovery.

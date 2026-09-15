@@ -56,10 +56,35 @@ const isIndex = (s: string) => /^CREATE\s+(UNIQUE\s+)?(INDEX|TRIGGER|VIEW)\b/i.t
 export function reorderDump(sql: string): { text: string; counts: Record<string, number> } {
   const statements: string[] = [];
 
+  // Notes can contain literal newlines followed by SQL-looking words. Only
+  // recognize statement starts outside quoted SQL strings/identifiers.
+  let quote: string | null = null;
+  let blockComment = false;
   for (const line of sql.split('\n')) {
-    if (STATEMENT_START.test(line) || statements.length === 0) statements.push(line);
+    if ((!quote && !blockComment && STATEMENT_START.test(line)) || statements.length === 0)
+      statements.push(line);
     else statements[statements.length - 1] += `\n${line}`;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (blockComment) {
+        if (char === '*' && line[i + 1] === '/') {
+          blockComment = false;
+          i++;
+        }
+      } else if (quote) {
+        if (char === quote) {
+          if (line[i + 1] === quote) i++;
+          else quote = null;
+        }
+      } else if (char === '-' && line[i + 1] === '-') break;
+      else if (char === '/' && line[i + 1] === '*') {
+        blockComment = true;
+        i++;
+      } else if (char === "'" || char === '"' || char === '`') quote = char;
+      else if (char === '[') quote = ']';
+    }
   }
+  if (quote || blockComment) throw new Error('Incomplete SQL export.');
 
   const schema: string[] = [];
   const data: string[] = [];

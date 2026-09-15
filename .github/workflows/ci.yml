@@ -33,6 +33,11 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Backup verification and encryption tests
+        run: |
+          command -v gpg
+          python3 -m unittest discover -s scripts -p "test_backup.py" -v
+
       - name: Build
         run: pnpm build
 
