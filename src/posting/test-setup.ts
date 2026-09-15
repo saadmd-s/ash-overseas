@@ -12,6 +12,8 @@ import { beforeAll, beforeEach } from 'vitest';
  * Child tables first, `dealers` last, so the deletes never trip a foreign key.
  */
 const TABLES_CHILD_FIRST = [
+  'request_receipts',
+  'ledger_write_revision',
   'audit_log',
   'ledger_entries',
   'transaction_lines',

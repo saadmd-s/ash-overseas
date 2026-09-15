@@ -18,6 +18,30 @@
 /** An integer number of paise. ₹1 = 100 paise. */
 export type Paise = number;
 
+export class MoneyRangeError extends Error {
+  constructor() {
+    super('This amount or balance exceeds the supported range. Reduce the amount.');
+  }
+}
+
+export function assertPaise(value: number): Paise {
+  if (!Number.isSafeInteger(value)) throw new MoneyRangeError();
+  return value;
+}
+
+/** Checked accumulation for ledger balances and export totals. */
+export function addPaise(a: Paise, b: Paise): Paise {
+  return assertPaise(assertPaise(a) + assertPaise(b));
+}
+
+export function applyMovement(balance: Paise, debit: Paise, credit: Paise): Paise {
+  return addPaise(addPaise(balance, debit), -assertPaise(credit));
+}
+
+export function sumPaise(values: readonly Paise[]): Paise {
+  return values.reduce(addPaise, 0);
+}
+
 // ---------------------------------------------------------------------------
 // SRS Appendix B — verbatim
 // ---------------------------------------------------------------------------

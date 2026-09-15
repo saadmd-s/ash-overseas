@@ -399,11 +399,15 @@ describe('Page cursors are validated, never coerced', () => {
 
   it('still accepts a real cursor', async () => {
     const dealerId = await newDealer();
-    const id = await newTransaction(dealerId);
+    const older = await newTransaction(dealerId, { entryDate: '2026-08-01' });
+    const cursor = await newTransaction(dealerId, { entryDate: '2026-08-03' });
+    const backdated = await newTransaction(dealerId, { entryDate: '2026-08-02' });
 
-    const res = await get(`/api/transactions?cursor=${id + 1}&dealerId=${dealerId}`);
+    const res = await get(`/api/transactions?cursor=${cursor}&dealerId=${dealerId}`);
     expect(res.status).toBe(200);
-    expect((await json<{ transactions: unknown[] }>(res)).transactions).toHaveLength(1);
+    expect(
+      (await json<{ transactions: { id: number }[] }>(res)).transactions.map((r) => r.id),
+    ).toEqual([backdated, older]);
   });
 });
 

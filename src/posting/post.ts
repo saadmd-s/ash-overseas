@@ -11,9 +11,9 @@
  * human-ID sequence and audit row commit together or not at all.
  */
 
-import { and, desc, eq, gt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { lineAmount, transactionTotals, type Paise } from '../money';
+import { assertPaise, lineAmount, transactionTotals, type Paise } from '../money';
 import { post, type BankAccount, type LedgerEvent } from '../ledger/engine';
 import {
   allocateSequence,
@@ -22,7 +22,8 @@ import {
   prefixForTransaction,
   sequenceScope,
 } from './ids';
-import { recomputeLedger } from './recompute';
+import { planAppend } from './ledger-write';
+import { assertWritableDealer, withLedgerWrite, type RetryIdentity } from './write';
 import type { BatchItem, Db } from './db';
 
 export { makeDb } from './db';
@@ -65,33 +66,6 @@ export async function currentBalance(db: Db, dealerId: number): Promise<Paise> {
     .limit(1);
 
   return rows[0]?.balance ?? 0;
-}
-
-/**
- * Did this insert land before existing entries? If so every later running
- * balance is now stale and §15.6 requires a replay.
- */
-async function hasEntriesAfter(
-  db: Db,
-  dealerId: number,
-  entryDate: string,
-  id: number,
-): Promise<boolean> {
-  const rows = await db
-    .select({ id: schema.ledgerEntries.id })
-    .from(schema.ledgerEntries)
-    .where(
-      and(
-        eq(schema.ledgerEntries.dealerId, dealerId),
-        or(
-          gt(schema.ledgerEntries.entryDate, entryDate),
-          and(eq(schema.ledgerEntries.entryDate, entryDate), gt(schema.ledgerEntries.id, id)),
-        ),
-      ),
-    )
-    .limit(1);
-
-  return rows.length > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +128,9 @@ export function buildTransactionBatch(
     gstRate: input.gstRate,
   });
 
+  linesPaise.forEach(assertPaise);
+  Object.values(totals).forEach(assertPaise);
+
   // The posting decision from the pure engine. Nothing is decided here.
   const event: LedgerEvent = {
     kind: 'transaction',
@@ -175,26 +152,29 @@ export function buildTransactionBatch(
     allocateSequence(db, scope),
 
     // 2. The header.
-    db.insert(schema.transactions).values({
-      humanId: humanId as unknown as string,
-      mode: input.mode,
-      dealerId: input.dealerId,
-      entryDate: input.entryDate,
-      invoiceNo: input.invoiceNo ?? null,
-      invoiceDate: input.invoiceDate ?? null,
-      referenceTag: input.referenceTag ?? null,
-      bankAccount: input.bankAccount,
-      gstRate: input.gstRate,
-      baseTotalPaise: totals.baseTotalPaise,
-      discountPaise,
-      freightPaise,
-      gstAmountPaise: totals.gstAmountPaise,
-      roundOffPaise: totals.roundOffPaise,
-      grandTotalPaise: totals.grandTotalPaise,
-      isReturnNote,
-      notes: input.notes ?? null,
-      isVoided: false,
-    }),
+    db
+      .insert(schema.transactions)
+      .values({
+        humanId: humanId as unknown as string,
+        mode: input.mode,
+        dealerId: input.dealerId,
+        entryDate: input.entryDate,
+        invoiceNo: input.invoiceNo ?? null,
+        invoiceDate: input.invoiceDate ?? null,
+        referenceTag: input.referenceTag ?? null,
+        bankAccount: input.bankAccount,
+        gstRate: input.gstRate,
+        baseTotalPaise: totals.baseTotalPaise,
+        discountPaise,
+        freightPaise,
+        gstAmountPaise: totals.gstAmountPaise,
+        roundOffPaise: totals.roundOffPaise,
+        grandTotalPaise: totals.grandTotalPaise,
+        isReturnNote,
+        notes: input.notes ?? null,
+        isVoided: false,
+      })
+      .returning({ id: schema.transactions.id, humanId: schema.transactions.humanId }),
 
     // 3. The lines.
     ...input.lines.map((line, i) =>
@@ -251,52 +231,49 @@ export function buildTransactionBatch(
 export async function createTransaction(
   db: Db,
   input: CreateTransactionInput,
+  retry?: RetryIdentity,
 ): Promise<CreatedTransaction> {
-  const priorBalancePaise = await balanceBefore(db, input.dealerId, input.entryDate);
-  const { statements, scope, grandTotalPaise, roundOffPaise } = buildTransactionBatch(
+  return withLedgerWrite(
     db,
-    input,
-    priorBalancePaise,
+    async () => {
+      await assertWritableDealer(db, input.dealerId);
+      const totals = transactionTotals({
+        linesPaise: input.lines.map((l) => lineAmount(l.quantity, l.ratePaise)),
+        discountPaise: input.discountPaise ?? 0,
+        freightPaise: input.freightPaise ?? 0,
+        gstRate: input.gstRate,
+      });
+      const plan = await planAppend(db, input.dealerId, {
+        kind: 'transaction',
+        mode: input.mode,
+        isReturnNote: input.isReturnNote ?? false,
+        grandTotalPaise: totals.grandTotalPaise,
+        entryDate: input.entryDate,
+        bankAccount: input.bankAccount,
+      });
+      const { statements, scope, grandTotalPaise, roundOffPaise } = buildTransactionBatch(
+        db,
+        input,
+        plan.priorBalance,
+      );
+      return {
+        statements: [...statements, ...plan.updates],
+        result: (results: unknown[]) => {
+          const [row] = results[1] as { id: number; humanId: string }[];
+          return {
+            ...row,
+            grandTotalPaise,
+            roundOffPaise,
+            runningBalancePaise: plan.closingBalance,
+          };
+        },
+        receipt: sql`json_object('id', (SELECT id FROM transactions WHERE human_id = ${humanIdExpr(scope)}),
+        'humanId', ${humanIdExpr(scope)}, 'grandTotalPaise', ${grandTotalPaise},
+        'roundOffPaise', ${roundOffPaise}, 'runningBalancePaise', ${plan.closingBalance})`,
+      };
+    },
+    retry,
   );
-
-  await db.batch(statements as [BatchItem, ...BatchItem[]]);
-
-  const created = await db
-    .select({ id: schema.transactions.id, humanId: schema.transactions.humanId })
-    .from(schema.transactions)
-    .where(eq(schema.transactions.humanId, sql`${humanIdExpr(scope)}`))
-    .limit(1);
-
-  const row = created[0];
-  if (!row) throw new Error('Transaction was not written — the batch did not commit.');
-
-  const ledgerRow = await db
-    .select({ id: schema.ledgerEntries.id })
-    .from(schema.ledgerEntries)
-    .where(
-      and(
-        eq(schema.ledgerEntries.sourceType, 'transaction'),
-        eq(schema.ledgerEntries.sourceId, row.id),
-      ),
-    )
-    .limit(1);
-
-  // §15.6 — a back-dated entry is legitimate. Post it, then replay, so every
-  // later running balance is rewritten and the stored balance is never stale.
-  if (
-    ledgerRow[0] &&
-    (await hasEntriesAfter(db, input.dealerId, input.entryDate, ledgerRow[0].id))
-  ) {
-    await recomputeLedger(db, input.dealerId);
-  }
-
-  return {
-    id: row.id,
-    humanId: row.humanId,
-    grandTotalPaise,
-    roundOffPaise,
-    runningBalancePaise: await currentBalance(db, input.dealerId),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -330,7 +307,7 @@ export function buildPaymentBatch(
     direction: input.direction,
     amountPaise: input.amountPaise,
     entryDate: input.entryDate,
-    bankAccount: input.bankAccount ?? null,
+    bankAccount: input.method === 'cash' ? null : (input.bankAccount ?? null),
   };
   const entry = post(priorBalancePaise, event);
 
@@ -341,19 +318,22 @@ export function buildPaymentBatch(
   const statements: BatchItem[] = [
     allocateSequence(db, scope),
 
-    db.insert(schema.payments).values({
-      humanId: humanId as unknown as string,
-      dealerId: input.dealerId,
-      entryDate: input.entryDate,
-      direction: input.direction,
-      amountPaise: input.amountPaise,
-      // §10.7 — the bank tag is omitted for cash.
-      method: input.method ?? null,
-      bankAccount: input.method === 'cash' ? null : (input.bankAccount ?? null),
-      reference: input.reference ?? null,
-      notes: input.notes ?? null,
-      isVoided: false,
-    }),
+    db
+      .insert(schema.payments)
+      .values({
+        humanId: humanId as unknown as string,
+        dealerId: input.dealerId,
+        entryDate: input.entryDate,
+        direction: input.direction,
+        amountPaise: input.amountPaise,
+        // §10.7 — the bank tag is omitted for cash.
+        method: input.method ?? null,
+        bankAccount: input.method === 'cash' ? null : (input.bankAccount ?? null),
+        reference: input.reference ?? null,
+        notes: input.notes ?? null,
+        isVoided: false,
+      })
+      .returning({ id: schema.payments.id, humanId: schema.payments.humanId }),
 
     db.insert(schema.ledgerEntries).values({
       dealerId: input.dealerId,
@@ -386,44 +366,35 @@ export function buildPaymentBatch(
   return { statements, scope };
 }
 
-export async function createPayment(db: Db, input: CreatePaymentInput): Promise<CreatedPayment> {
-  const priorBalancePaise = await balanceBefore(db, input.dealerId, input.entryDate);
-  const { statements, scope } = buildPaymentBatch(db, input, priorBalancePaise);
-
-  await db.batch(statements as [BatchItem, ...BatchItem[]]);
-
-  const created = await db
-    .select({ id: schema.payments.id, humanId: schema.payments.humanId })
-    .from(schema.payments)
-    .where(eq(schema.payments.humanId, sql`${humanIdExpr(scope)}`))
-    .limit(1);
-
-  const row = created[0];
-  if (!row) throw new Error('Payment was not written — the batch did not commit.');
-
-  const ledgerRow = await db
-    .select({ id: schema.ledgerEntries.id })
-    .from(schema.ledgerEntries)
-    .where(
-      and(
-        eq(schema.ledgerEntries.sourceType, 'payment'),
-        eq(schema.ledgerEntries.sourceId, row.id),
-      ),
-    )
-    .limit(1);
-
-  if (
-    ledgerRow[0] &&
-    (await hasEntriesAfter(db, input.dealerId, input.entryDate, ledgerRow[0].id))
-  ) {
-    await recomputeLedger(db, input.dealerId);
-  }
-
-  return {
-    id: row.id,
-    humanId: row.humanId,
-    runningBalancePaise: await currentBalance(db, input.dealerId),
-  };
+export async function createPayment(
+  db: Db,
+  input: CreatePaymentInput,
+  retry?: RetryIdentity,
+): Promise<CreatedPayment> {
+  return withLedgerWrite(
+    db,
+    async () => {
+      await assertWritableDealer(db, input.dealerId);
+      const plan = await planAppend(db, input.dealerId, {
+        kind: 'payment',
+        direction: input.direction,
+        amountPaise: input.amountPaise,
+        entryDate: input.entryDate,
+        bankAccount: input.method === 'cash' ? null : (input.bankAccount ?? null),
+      });
+      const { statements, scope } = buildPaymentBatch(db, input, plan.priorBalance);
+      return {
+        statements: [...statements, ...plan.updates],
+        result: (results: unknown[]) => {
+          const [row] = results[1] as { id: number; humanId: string }[];
+          return { ...row, runningBalancePaise: plan.closingBalance };
+        },
+        receipt: sql`json_object('id', (SELECT id FROM payments WHERE human_id = ${humanIdExpr(scope)}),
+        'humanId', ${humanIdExpr(scope)}, 'runningBalancePaise', ${plan.closingBalance})`,
+      };
+    },
+    retry,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -441,26 +412,64 @@ export interface CreateDealerInput {
   opening?: { direction: 'owes_us' | 'we_owe'; amountPaise: Paise; entryDate: string };
 }
 
-export async function createDealer(db: Db, input: CreateDealerInput): Promise<{ id: number }> {
-  const inserted = await db
-    .insert(schema.dealers)
-    .values({
-      name: input.name,
-      contact: input.contact ?? null,
-      address: input.address ?? null,
-      gstin: input.gstin ?? null,
-      stateCode: input.stateCode ?? null,
-      type: input.type ?? 'both',
-      isArchived: false,
-    })
-    .returning({ id: schema.dealers.id });
-
-  const dealer = inserted[0];
-  if (!dealer) throw new Error('Dealer was not created.');
-
-  if (input.opening) await addOpening(db, dealer.id, input.opening);
-
-  return { id: dealer.id };
+export async function createDealer(
+  db: Db,
+  input: CreateDealerInput,
+  retry?: RetryIdentity,
+): Promise<{ id: number }> {
+  return withLedgerWrite(
+    db,
+    async () => {
+      const identity = {
+        name: input.name,
+        contact: input.contact ?? null,
+        address: input.address ?? null,
+        gstin: input.gstin ?? null,
+        stateCode: input.stateCode ?? null,
+        type: input.type ?? 'both',
+        isArchived: false,
+      };
+      // Evaluated inside the batch, immediately after its AUTOINCREMENT insert.
+      const dealerId = sql`(SELECT MAX(id) FROM dealers)`;
+      const statements: BatchItem[] = [
+        db.insert(schema.dealers).values(identity).returning({ id: schema.dealers.id }),
+      ];
+      if (input.opening) {
+        const entry = post(0, { kind: 'opening', ...input.opening });
+        statements.push(
+          db.insert(schema.ledgerEntries).values({
+            dealerId,
+            entryDate: entry.entryDate,
+            sourceType: 'opening',
+            sourceId: null,
+            debitPaise: entry.debitPaise,
+            creditPaise: entry.creditPaise,
+            runningBalancePaise: entry.runningBalancePaise,
+            bankAccount: null,
+            label: 'Opening',
+          }),
+        );
+      }
+      statements.push(
+        db.insert(schema.auditLog).values({
+          action: 'create',
+          entity: 'dealers',
+          entityId: dealerId,
+          beforeJson: null,
+          afterJson: JSON.stringify({
+            ...identity,
+            ...(input.opening ? { opening: input.opening } : {}),
+          }),
+        }),
+      );
+      return {
+        statements,
+        result: (results: unknown[]) => (results[0] as { id: number }[])[0],
+        receipt: sql`json_object('id', ${dealerId})`,
+      };
+    },
+    retry,
+  );
 }
 
 export type OpeningInput = NonNullable<CreateDealerInput['opening']>;
@@ -507,44 +516,47 @@ export async function liveOpeningEntry(db: Db, dealerId: number) {
  * It may be dated before entries that already exist, so it is posted against
  * the balance on that date and followed by a replay when needed (§15.6).
  */
-export async function addOpening(db: Db, dealerId: number, opening: OpeningInput): Promise<void> {
-  if (await liveOpeningEntry(db, dealerId)) throw new OpeningExists();
-
-  const prior = await balanceBefore(db, dealerId, opening.entryDate);
-  const entry = post(prior, {
-    kind: 'opening',
-    direction: opening.direction,
-    amountPaise: opening.amountPaise,
-    entryDate: opening.entryDate,
-  });
-
-  await db.batch([
-    db.insert(schema.ledgerEntries).values({
-      dealerId,
-      entryDate: opening.entryDate,
-      sourceType: 'opening',
-      // §12.3 leaves the convention unstated; an opening entry has no separate
-      // source record — the dealer is already named on the row. See
-      // docs/BACKEND_SCHEMA.md §4.5.
-      sourceId: null,
-      debitPaise: entry.debitPaise,
-      creditPaise: entry.creditPaise,
-      runningBalancePaise: entry.runningBalancePaise,
-      bankAccount: null,
-      label: 'Opening',
-      description: null,
-    }),
-    db.insert(schema.auditLog).values({
-      action: 'create',
-      entity: 'dealers',
-      entityId: dealerId,
-      beforeJson: null,
-      afterJson: JSON.stringify({ opening }),
-    }),
-  ]);
-
-  const inserted = await liveOpeningEntry(db, dealerId);
-  if (inserted && (await hasEntriesAfter(db, dealerId, opening.entryDate, inserted.id))) {
-    await recomputeLedger(db, dealerId);
-  }
+export async function addOpening(
+  db: Db,
+  dealerId: number,
+  opening: OpeningInput,
+  retry?: RetryIdentity,
+): Promise<{ runningBalancePaise: Paise }> {
+  return withLedgerWrite(
+    db,
+    async () => {
+      await assertWritableDealer(db, dealerId);
+      if (await liveOpeningEntry(db, dealerId)) throw new OpeningExists();
+      const plan = await planAppend(db, dealerId, { kind: 'opening', ...opening });
+      const entry = plan.entry;
+      return {
+        statements: [
+          db.insert(schema.ledgerEntries).values({
+            dealerId,
+            entryDate: opening.entryDate,
+            sourceType: 'opening',
+            sourceId: null,
+            debitPaise: entry.debitPaise,
+            creditPaise: entry.creditPaise,
+            runningBalancePaise: entry.runningBalancePaise,
+            bankAccount: null,
+            label: 'Opening',
+          }),
+          db
+            .insert(schema.auditLog)
+            .values({
+              action: 'create',
+              entity: 'dealers',
+              entityId: dealerId,
+              beforeJson: null,
+              afterJson: JSON.stringify({ opening }),
+            }),
+          ...plan.updates,
+        ],
+        result: () => ({ runningBalancePaise: plan.closingBalance }),
+        receipt: sql`json_object('runningBalancePaise', ${plan.closingBalance})`,
+      };
+    },
+    retry,
+  );
 }

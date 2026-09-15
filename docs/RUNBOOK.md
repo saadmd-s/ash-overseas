@@ -481,3 +481,18 @@ data:
     `AUTH_SECRET: string` to `worker-configuration.d.ts`, which breaks the
     typecheck — the Worker declares it optional, because unset is a real state.
     Delete those generated lines after running it.
+
+## September 2026 ledger repair release
+
+This release adds `0001_silly_impossible_man.sql`. It has been applied by the isolated integration suite, **not to the remote databases** during the repair pass.
+
+1. Arrange a quiet write window and take a production backup with `pnpm db:export` using the backup procedure above.
+2. Apply and verify the migration in development/staging first. It adds `ledger_write_revision` and `request_receipts` without altering existing ledger rows.
+3. For the production release, run `pnpm db:migrate:prod` before `pnpm deploy:prod`. Do not deploy the new code against a database missing these tables.
+4. Check the deployment protections and complete the browser/export/PWA checks listed in `LAUNCH_REPORT.md` before calling the release verified.
+
+All writes that change dealers, transaction details or ledger balances must use `withLedgerWrite`. Its revision check, writes, replay and retry receipt form one atomic D1 batch. A direct SQL maintenance write or an older Worker version bypasses this guard, so do not mix those writers with the new version during the transition.
+
+The migration does not repair historical incorrect balances. Reconcile source records and inspect `checkLedgerIntegrity` before any targeted maintenance replay. `recomputeLedger` now performs its updates and audit atomically. Back up before maintenance and verify exact paise afterward.
+
+Keep both new tables in full backups. Retry receipts deliberately have no automatic expiry: purging them permits old keys to create another entry. If rollback of application code becomes necessary, leave the additive tables in place; the old version still has the concurrency defects and should not resume normal financial entry until repaired. This release has not had a production rollback drill.

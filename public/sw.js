@@ -35,7 +35,7 @@
  * stored under .js URLs by the bug above.
  */
 
-const SHELL = 'shell-v2';
+const SHELL = 'shell-v3';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -78,7 +78,12 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           if (cacheable(request, res)) {
             const copy = res.clone();
-            caches.open(SHELL).then((cache) => cache.put('/', copy));
+            event.waitUntil(
+              caches
+                .open(SHELL)
+                .then((cache) => cache.put('/', copy))
+                .catch(() => {}),
+            );
           }
           return res;
         })
@@ -86,6 +91,12 @@ self.addEventListener('fetch', (event) => {
     );
     return;
   }
+
+  if (
+    !url.pathname.startsWith('/assets/') &&
+    !['/manifest.webmanifest', '/icon.svg'].includes(url.pathname)
+  )
+    return;
 
   // Content-hashed assets and the other shell files: cache-first.
   event.respondWith(
@@ -95,7 +106,12 @@ self.addEventListener('fetch', (event) => {
         fetch(request).then((res) => {
           if (cacheable(request, res)) {
             const copy = res.clone();
-            caches.open(SHELL).then((cache) => cache.put(request, copy));
+            event.waitUntil(
+              caches
+                .open(SHELL)
+                .then((cache) => cache.put(request, copy))
+                .catch(() => {}),
+            );
           }
           return res;
         }),

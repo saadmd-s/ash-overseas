@@ -64,6 +64,17 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  // One seed per form/draft, combined with its exact payload. Retries reuse
+  // the key; editing the form or starting another entry produces a new key.
+  create: async <T>(path: string, body: unknown, seed: string): Promise<T> => {
+    const encoded = JSON.stringify(body);
+    const digest = await crypto.subtle.digest(
+      'SHA-256',
+      new TextEncoder().encode(`${seed}:${path}:${encoded}`),
+    );
+    const key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    return request<T>(path, { method: 'POST', body: encoded, headers: { 'Idempotency-Key': key } });
+  },
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
 };
@@ -73,6 +84,24 @@ export const api = {
 // ---------------------------------------------------------------------------
 
 export type BankAccount = 'od' | 'current';
+
+/** A browser preference must never prevent entry or turn a saved entry into an error. */
+export const bankPreference = {
+  load(): BankAccount {
+    try {
+      return localStorage.getItem('lastBankAccount') === 'current' ? 'current' : 'od';
+    } catch {
+      return 'od';
+    }
+  },
+  save(value: BankAccount): void {
+    try {
+      localStorage.setItem('lastBankAccount', value);
+    } catch {
+      // Storage may be blocked or full; the server save is still successful.
+    }
+  },
+};
 export type DealerType = 'supplier' | 'buyer' | 'both';
 
 export interface Dealer {

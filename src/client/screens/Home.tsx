@@ -3,7 +3,7 @@
  * FR-N1…N4.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
   ListFilter,
@@ -142,6 +142,7 @@ export function DealerRoster({
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
+  const generation = useRef(0);
 
   // Debounced, so typing a name does not fire a request per keystroke.
   useEffect(() => {
@@ -150,6 +151,8 @@ export function DealerRoster({
   }, [query]);
 
   const load = useCallback(() => {
+    const request = ++generation.current;
+    setDealers(null);
     setError(null);
     api
       .get<{ dealers: Dealer[] }>(
@@ -159,8 +162,12 @@ export function DealerRoster({
           includeArchived: showDeleted ? 'true' : undefined,
         })}`,
       )
-      .then((d) => setDealers(d.dealers))
-      .catch(() => setError('Could not load dealers.'));
+      .then((d) => {
+        if (request === generation.current) setDealers(d.dealers);
+      })
+      .catch(() => {
+        if (request === generation.current) setError('Could not load dealers.');
+      });
   }, [type, debounced, showDeleted]);
 
   useEffect(load, [load]);
@@ -305,6 +312,9 @@ interface CrossDealerTransaction {
 
 /** FR-N4 — every transaction across dealers, with filters and export. */
 export function AllTransactions() {
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const generation = useRef(0);
   const [rows, setRows] = useState<CrossDealerTransaction[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<{
@@ -322,12 +332,49 @@ export function AllTransactions() {
   const query = toQuery(filters);
 
   const load = useCallback(() => {
+    const current = ++generation.current;
+    setNextCursor(null);
+    setLoadingMore(false);
+    setRows(null);
     setError(null);
     api
-      .get<{ transactions: CrossDealerTransaction[] }>(`/api/transactions${query}`)
-      .then((d) => setRows(d.transactions))
-      .catch(() => setError('Could not load transactions.'));
+      .get<{ transactions: CrossDealerTransaction[]; nextCursor: number | null }>(
+        `/api/transactions${query}`,
+      )
+      .then((d) => {
+        if (current === generation.current) {
+          setRows(d.transactions);
+          setNextCursor(d.nextCursor);
+        }
+      })
+      .catch(() => {
+        if (current === generation.current) setError('Could not load transactions.');
+      });
   }, [query]);
+
+  async function loadMore() {
+    if (nextCursor === null || loadingMore) return;
+    const current = generation.current;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const data = await api.get<{
+        transactions: CrossDealerTransaction[];
+        nextCursor: number | null;
+      }>(`/api/transactions${toQuery({ ...filters, cursor: String(nextCursor) })}`);
+      if (current === generation.current) {
+        setRows((previous) => [
+          ...(previous ?? []),
+          ...data.transactions.filter((row) => !previous?.some((r) => r.id === row.id)),
+        ]);
+        setNextCursor(data.nextCursor);
+      }
+    } catch {
+      if (current === generation.current) setError('Could not load more entries. Please retry.');
+    } finally {
+      if (current === generation.current) setLoadingMore(false);
+    }
+  }
 
   useEffect(load, [load]);
 
@@ -420,7 +467,13 @@ export function AllTransactions() {
       {shown?.length === 0 && (
         <EmptyState
           icon={<Receipt size={28} aria-hidden="true" />}
-          message={active ? 'Nothing matches these filters.' : 'No purchases or sales yet.'}
+          message={
+            nextCursor !== null
+              ? 'No visible entries on this page. Load more or show deleted entries.'
+              : active
+                ? 'Nothing matches these filters.'
+                : 'No purchases or sales yet.'
+          }
         />
       )}
 
@@ -456,6 +509,12 @@ export function AllTransactions() {
             </li>
           ))}
         </ul>
+      )}
+
+      {nextCursor !== null && (
+        <Button variant="outline" disabled={loadingMore} onClick={() => void loadMore()}>
+          {loadingMore ? 'Loading…' : 'Load more entries'}
+        </Button>
       )}
 
       {deletedCount > 0 && (
@@ -507,6 +566,7 @@ export function NewDealer({
   onSaved: (id: number) => void;
   onCancel: () => void;
 }) {
+  const [saveSeed] = useState(() => crypto.randomUUID());
   const [name, setName] = useState('');
   const [type, setType] = useState<DealerType>('both');
   const [gstin, setGstin] = useState('');
@@ -520,21 +580,25 @@ export function NewDealer({
     setError(null);
     setFieldErrors({});
     try {
-      const created = await api.post<{ id: number }>('/api/dealers', {
-        name,
-        type,
-        gstin: gstin || null,
-        // Optional: sent only when an amount was actually entered.
-        ...(opening.amountPaise
-          ? {
-              opening: {
-                direction: opening.direction,
-                amountPaise: opening.amountPaise,
-                entryDate: opening.entryDate,
-              },
-            }
-          : {}),
-      });
+      const created = await api.create<{ id: number }>(
+        '/api/dealers',
+        {
+          name,
+          type,
+          gstin: gstin || null,
+          // Optional: sent only when an amount was actually entered.
+          ...(opening.amountPaise
+            ? {
+                opening: {
+                  direction: opening.direction,
+                  amountPaise: opening.amountPaise,
+                  entryDate: opening.entryDate,
+                },
+              }
+            : {}),
+        },
+        saveSeed,
+      );
       onSaved(created.id);
     } catch (e) {
       if (e instanceof RequestFailed) {

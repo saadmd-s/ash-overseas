@@ -749,6 +749,7 @@ function AddOpeningDialog({
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const [saveSeed] = useState(() => crypto.randomUUID());
   const [value, setValue] = useState<OpeningDraft>(emptyOpening);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState<string | null>(null);
@@ -760,7 +761,7 @@ function AddOpeningDialog({
     setErrors({});
     setFailure(null);
     try {
-      await api.post(`/api/dealers/${dealer.id}/opening`, value);
+      await api.create(`/api/dealers/${dealer.id}/opening`, value, saveSeed);
       onSaved();
     } catch (e) {
       if (e instanceof RequestFailed) {

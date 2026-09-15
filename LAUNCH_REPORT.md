@@ -1,92 +1,37 @@
-# Launch report — ASH Overseas Trading Ledger
+# Release repair report ? 15 September 2026
 
-**Audited:** 13 Sep 2026 · **Target:** https://ash.ashoverseas.workers.dev (production) and a local build of the same code · **Stack:** Vite + React SPA, Hono Worker on Cloudflare Workers, D1
+**The reproduced code blockers are repaired locally. Production release verification is still pending.** No deployment, remote migration or production financial write was performed. The earlier audit is superseded by this report; the original historical launch report remains in `docs/LAUNCH_REPORT_2026-09-13.md`.
 
-**Scope:** a private, single-user financial app behind a login. Security, mobile, accessibility and feedback states were in scope. **Search and sharing items were deliberately inverted:** this app should _not_ be indexed, previewed or discoverable, so missing og:image, sitemap, canonical, JSON-LD, analytics, privacy policy and terms are not defects here (see "Not applicable").
+## Repairs
 
-## Verdict
+- **Concurrent writes:** a database revision guard protects read/prepare/commit across Worker instances. A stale preparation rolls back and retries. IDs come from the inserting batch, so overlapping saves cannot return another request's ID.
+- **Atomic replay and correction:** source rows, sequence, ledger posting, backdated balance updates and audit now commit in one D1 batch. Dealer creation, its optional opening and audit are atomic too. Concurrent openings and double deletions are checked within the guarded operation.
+- **Retry safety:** creation APIs accept `Idempotency-Key`. The payload fingerprint and original result commit with the financial write. Same-key retries return the saved result; reuse for different details is rejected. Entry drafts retain a seed so retrying a lost response uses the same key. Dealer/opening dialog seeds last for the current mounted form; closing and recreating those forms starts a new operation. Requests without a key remain supported and are not deduplicated.
+- **Money safety:** writes and replay reject unsafe cumulative balances. Export totals sum integer paise before converting to rupees and reject aggregate overflow. Appendix B formulas remain unchanged.
+- **Input and resource limits:** real calendar-date validation, calculated-total checks, 256 KiB API body limit, 25 goods lines, 200-character names, 500-character general text and 4,000-character notes. Cross-dealer filters reject invalid values.
+- **Export security:** CSV formula-like text is escaped as text; numeric balances stay numeric. Large ID selections use one JSON parameter instead of exceeding D1's bind-parameter limit. Dealer balance reads no longer issue a query per dealer.
+- **History navigation:** transaction cursors follow `(entry_date, id)`, including backdated rows. Transactions and activity screens expose older pages. Dealer search ignores stale responses. Unknown client routes show a missing-page message.
+- **Client reliability:** guarded preference storage, dealer/mode-specific form mounting, keyboard focus containment/restoration in dialogs, and service-worker cache writes tied to event lifetime. Cache-first requests are restricted to shell assets; API data remains network-only.
+- **Security handling:** API responses explicitly use `no-store`; unexpected database failures return generic errors without SQL parameters in logs. Cash payments normalize their bank tag consistently.
+- **Dependencies:** scoped patches for transitive sharp and esbuild; `pnpm audit` reports no known vulnerabilities. This is an advisory check, not proof of absence of vulnerabilities.
 
-**GO** — no P0 is open. The one real P0 (plain http served the login form unencrypted) is fixed and verified on production.
+## Verification
 
-|                        | Found                       | Fixed | Open                                 |
-| ---------------------- | --------------------------- | ----- | ------------------------------------ |
-| P0 — blocker           | 1 real (+5 false positives) | 1     | 0                                    |
-| P1 — before announcing | 7                           | 6     | 1 (extensionless soft 404, accepted) |
-| P2 — this week         | 4                           | 4     | 0                                    |
-| P3 — backlog           | 3                           | 3     | 0                                    |
+- Final full regression suite passed: **268 tests across 17 files**, including retry results for every creation type, client retry behavior/storage failure, and exact fractional-rupee export totals.
+- Actual D1 failure injection proves rollback during backdated replay, opening insertion, void replay and retry-receipt insertion. The former mocked opening failure now exercises a real database trigger.
+- Concurrent payments return distinct IDs and preserve balances. Concurrent same-key retries produce one payment. Overlapping voids/openings preserve their invariants.
+- A backdated insert successfully replayed **10,000 ledger rows** in local D1 with exact integrity verification. This is a synthetic correctness/capacity check, not a production latency benchmark or an unlimited-history guarantee.
+- TypeScript and ESLint passed. Default and production-selected builds passed. Generated production config was checked: Worker `ash`, `APP_ENV=production`, database `ledger-prod`.
+- `pnpm db:generate` reported no schema drift after generation. Integration tests apply the committed migrations to isolated local databases.
+- No connected browser was available on 15 September. Prior live HTTP/security evidence from 14 September remains in ignored `.prelaunch/live-2026-09-14.json`; it describes the previous deployed version, not these local repairs.
 
----
+## Deployment and remaining gates
 
-## Fixed
+1. Review and apply the new additive migration `0001_silly_impossible_man.sql` before deploying this code. It creates `ledger_write_revision` and `request_receipts`; there are no destructive schema changes. Follow the release section in `docs/RUNBOOK.md`, including a backup first. Keep all financial writes on the guarded code path. Direct SQL writes bypass this protection.
+2. Deploy only through `pnpm deploy:prod`. Recheck authentication, strict CSP, security headers and no-store responses against the deployed build.
+3. Use disposable staging data to verify owner workflows, all exports in both formats under production CSP, pagination, keyboard dialogs, mobile layout and PWA install/update/offline behavior. A real phone check is still required.
+4. Complete the isolated production backup/restore drill with meaningful data and verify recurring backups. The existing remote-development drill is historical evidence, not a completed production drill.
 
-### Security
+Existing data is not automatically repaired by this migration. If an earlier overlapping save affected stored balances, inspect ledger integrity and reconcile source entries before using the existing recompute maintenance helper; never invent or discard financial records to make totals match. Retain retry receipts in backups: deleting them removes deduplication for older retry keys. A response replay returns the original save result, not a freshly queried current balance.
 
-- `src/worker/index.ts` — **plain `http://` now 301s to `https://`** in production, path and query kept. Before: http served the app with a 200, so a first visit typed without https could post the password in the clear (HSTS only protects a browser that has already visited over https). Verified live: `http://…/dealers/1?x=1` → `301 https://…/dealers/1?x=1`.
-- `src/worker/auth.ts`, `wrangler.jsonc` — **per-IP cap on sign-in attempts** (Cloudflare rate-limit binding, 10/min per IP), checked before any password work; 429 with `Retry-After: 60`. Per IP rather than a global lockout, so nobody can lock the owner out. `scripts/deploy-prod.ts` now refuses a production build without the binding. Verified live: a 180-request burst got 24 × 429. **The limit is approximate** (see Open).
-- `src/worker/index.ts` — **requests for files that do not exist are real 404s.** `/.env`, `/.env.local`, `/.git/HEAD`, `/.git/config`, `/db.sqlite`, `/backup.zip`, `/phpinfo.php`, `/.DS_Store` previously returned the app shell with a 200. None of them ever exposed anything (verified: every one was the same 822-byte `index.html`), but every scanner reports that as a leak. Verified live: all 404.
-- `package.json` — **drizzle-orm 0.44.7 → 0.45.2** (GHSA-gpj5-g38j-94v9, high, SQL injection via identifiers). Not reachable here — every table and column name is fixed in code — but it was in the request path. `pnpm audit --prod` now clean; 226 tests pass; no schema change.
-- `src/worker/auth.ts`, `public/robots.txt`, `index.html` — **kept out of search indexes**: `X-Robots-Tag: noindex, nofollow` on every response, `<meta name="robots">`, and `Disallow: /`. Verified live.
-
-### Accessibility and mobile
-
-- `index.html`, `src/client/ui.tsx`, `components.tsx`, `screens/Auth.tsx` — **pinch-zoom no longer blocked** (was `maximum-scale=1.0`, a WCAG 1.4.4 failure — on an app for an elderly owner). Field text raised 14 → 16px, which is what stops iOS zooming on every field tap, the reason the block was there.
-- `src/client/ui.tsx` and 7 screens — **44px minimum touch target** on every button variant, icon button, input, segmented control, menu item, "More options", "Sign out" and the back link. Before: 16 controls per screen measured 20–42px.
-- `src/client/AppShell.tsx`, `screens/Home.tsx`, `screens/Auth.tsx` — **exactly one `<h1>` per screen.** Home, the dealer lists and the phone-width login had none; desktop screens had two (the header title was also an h1).
-- `src/client/AppShell.tsx` — **skip-to-content link**, first Tab stop, `main` focusable.
-- `src/client/AppShell.tsx` — bottom tab labels 11 → 12px; still fits at 360px.
-- `src/client/styles.css` — date fields kept their full year at 360px after the 16px change (Chrome was clipping the last digit).
-- `public/apple-touch-icon.png` (new, 180×180) — iOS ignores an SVG touch icon, so "Add to Home Screen" had no icon.
-- Keyboard focus: tabbed through the dealer page and payment form — every stop shows a visible ring.
-
-### Performance
-
-- `src/worker/index.ts` — content-hashed `/assets/*` now `Cache-Control: public, max-age=31536000, immutable` (was `max-age=0, must-revalidate`, a revalidation round trip per file per load). HTML stays `max-age=0`. Verified live.
-
-### Disclosure
-
-- `src/worker/index.ts` — `/.well-known/security.txt` (RFC 9116) with the maintainer's contact, a rolling `Expires` under a year out, and a canonical URL. Tested in `src/worker/security-txt.test.ts`.
-
-### Content
-
-- `screens/Auth.tsx` — the login panel said "Nothing is ever deleted — corrections are recorded, not erased", contradicting the new **Delete** button. Now "Nothing is ever lost — a deleted entry is kept for your records."
-
----
-
-## Open — needs a decision
-
-None. **Error alerting was skipped by the owner on 13 Sep 2026.** Cloudflare has no free notification for Worker errors; the free options (a Sentry free-plan project, or an in-app error notice) remain available if wanted later. Worker logs are on in the meantime.
-
----
-
-## Open — found, not fixed
-
-| Severity | Finding                                                                                        | Why not fixed                                                                                                                                                                                                                                                                                                 |
-| -------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1       | An unknown app-style URL (`/nope`, `/server-status`) returns the app shell with 200 (soft 404) | The client already falls back to Home for a mistyped route. Returning 404 would mean duplicating the client route table in the Worker, which can drift. For a private, noindexed app the SEO cost of a soft 404 is nil. File-like paths _are_ now real 404s.                                                  |
-| —        | The login rate limit is approximate                                                            | Cloudflare documents the binding as "permissive, eventually consistent, and intentionally designed to not be used as an accurate accounting system", counted per location. Measured: 24 of 180 burst requests refused. It stops a flood; the ½-second delay, PBKDF2 and the audit trail still carry the rest. |
-| P2       | 2 dev-only advisories: `sharp` (inside Miniflare) and `esbuild` (inside the Vite dev server)   | Neither ships to production or runs in the request path. They clear when wrangler/vite release updates.                                                                                                                                                                                                       |
-
-**Scanner findings confirmed as false positives:** the five P0 "exposed paths" (app shell, not files — now 404 anyway); "no compression" (production serves brotli, verified); "focus outline removed" (verified visible by tabbing); "js-heavy 545 KB" (only the main bundle loads on first view, 82 KB brotli; the Excel library loads only on download); "secret assignment in `auth.test.ts`" (a test fixture password); "AUTH_SECRET in the client bundle" (the words, in a dev-mode help message); "30 console calls" (README, scripts and tests — none in shipped code); "hardcoded copyright year" (inside generated Cloudflare type definitions); "layout wider than device at 1280" (headless-browser screen size).
-
-## Not applicable (private, single-user app)
-
-og:image, Open Graph and Twitter cards, sitemap.xml, canonical, JSON-LD, llms.txt, analytics, privacy policy, terms, cookie consent, spam protection on public forms (there are none — the only unauthenticated form is the login, which is rate-limited), LICENSE. If the app ever becomes multi-user or public, revisit these.
-
----
-
-## Not tested
-
-- **A real phone.** Every screen was checked at 360, 375, 768 and 1280px in headless Chrome, not on a device. One-handed use, touch feel, the iOS keyboard and Safari's date picker need a real phone.
-- **Screen reader.** Headings, labels and landmarks were checked automatically; a five-minute TalkBack or VoiceOver pass was not done.
-- **Excel/CSV downloads saving under the production CSP** and **the PWA installing and loading offline** — both need a real browser session signed in to production (RUNBOOK §Checks that still need a real browser).
-- **Signed-in production screens.** The probe ran on the live login page; signed-in screens were probed on a local build of the same commit, because I do not hold the owner's password.
-- **Restore drill against `ledger-prod`** — still waiting for real entries (CLAUDE.md, What is NOT done).
-
----
-
-## After deploy
-
-1. `curl -sI http://ash.ashoverseas.workers.dev` → expect `301` to https. _(done)_
-2. `curl -s https://ash.ashoverseas.workers.dev/robots.txt` → `Disallow: /` — correct for this app. _(done)_
-3. `curl -so /dev/null -w "%{http_code}" https://ash.ashoverseas.workers.dev/.env` → `404`. _(done)_
-4. Sign in on the owner's phone, record one entry, download it as Excel, and add the app to the home screen.
+Owner choices in SRS ?22 remain unchanged (cash bank tag, default history order, payments in the all-transactions export, and branding).

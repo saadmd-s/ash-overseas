@@ -20,10 +20,12 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { MAX_TRANSACTION_LINES } from '../../limits';
 import { ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { formatPaise, lineAmount, transactionTotals } from '../../money';
 import {
   api,
+  bankPreference,
   draft,
   REFERENCE_TAG_HINT,
   RequestFailed,
@@ -42,6 +44,7 @@ interface LineDraft {
 }
 
 interface FormDraft {
+  saveSeed?: string;
   mode: 'purchase' | 'sale';
   entryDate: string;
   invoiceNo: string;
@@ -58,11 +61,8 @@ interface FormDraft {
 
 const emptyLine = (): LineDraft => ({ itemName: '', quantity: '', unit: '', ratePaise: null });
 
-/** The last bank account used, so it can default (FR-T6). */
-const LAST_BANK_KEY = 'lastBankAccount';
-
 function initial(mode: 'purchase' | 'sale'): FormDraft {
-  const lastBank = (localStorage.getItem(LAST_BANK_KEY) as BankAccount | null) ?? 'od';
+  const lastBank = bankPreference.load();
   return {
     mode,
     entryDate: todayIST(),
@@ -91,9 +91,10 @@ export function TransactionForm({
   onCancel: () => void;
 }) {
   const draftKey = `tx:${dealer.id}:${mode}`;
-  const [form, setForm] = useState<FormDraft>(
-    () => draft.load<FormDraft>(draftKey) ?? initial(mode),
-  );
+  const [form, setForm] = useState<FormDraft>(() => ({
+    saveSeed: crypto.randomUUID(),
+    ...(draft.load<FormDraft>(draftKey) ?? initial(mode)),
+  }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -159,28 +160,32 @@ export function TransactionForm({
     setErrors({});
 
     try {
-      const created = await api.post<{ grandTotalPaise: number }>('/api/transactions', {
-        dealerId: dealer.id,
-        mode: form.mode,
-        entryDate: form.entryDate,
-        invoiceNo: form.invoiceNo || null,
-        invoiceDate: form.invoiceDate || null,
-        referenceTag: form.referenceTag || null,
-        bankAccount: form.bankAccount,
-        gstRate: Number(form.gstRate),
-        discountPaise: form.discountPaise ?? 0,
-        freightPaise: form.freightPaise ?? 0,
-        isReturnNote: form.isReturnNote,
-        notes: form.notes || null,
-        lines: form.lines.map((l) => ({
-          itemName: l.itemName || null,
-          quantity: Number(l.quantity),
-          unit: l.unit || null,
-          ratePaise: l.ratePaise ?? 0,
-        })),
-      });
+      const created = await api.create<{ grandTotalPaise: number }>(
+        '/api/transactions',
+        {
+          dealerId: dealer.id,
+          mode: form.mode,
+          entryDate: form.entryDate,
+          invoiceNo: form.invoiceNo || null,
+          invoiceDate: form.invoiceDate || null,
+          referenceTag: form.referenceTag || null,
+          bankAccount: form.bankAccount,
+          gstRate: Number(form.gstRate),
+          discountPaise: form.discountPaise ?? 0,
+          freightPaise: form.freightPaise ?? 0,
+          isReturnNote: form.isReturnNote,
+          notes: form.notes || null,
+          lines: form.lines.map((l) => ({
+            itemName: l.itemName || null,
+            quantity: Number(l.quantity),
+            unit: l.unit || null,
+            ratePaise: l.ratePaise ?? 0,
+          })),
+        },
+        form.saveSeed!,
+      );
 
-      localStorage.setItem(LAST_BANK_KEY, form.bankAccount);
+      bankPreference.save(form.bankAccount);
       draft.clear(draftKey); // cleared only on SUCCESS
       onSaved(
         `${form.mode === 'sale' ? 'Sale' : 'Purchase'} saved — ${formatPaise(created.grandTotalPaise)}`,
@@ -191,7 +196,7 @@ export function TransactionForm({
         setErrors(e.detail.fields ?? {});
         setFailure(e.detail.message);
       } else {
-        setFailure('Could not save.');
+        setFailure('Could not confirm the save. Check the dealer history before trying again.');
       }
     } finally {
       setSaving(false);
@@ -382,6 +387,7 @@ export function TransactionForm({
       <Button
         variant="text"
         className="flex items-center gap-1"
+        disabled={form.lines.length >= MAX_TRANSACTION_LINES}
         onClick={() => setForm((f) => ({ ...f, lines: [...f.lines, emptyLine()] }))}
       >
         <Plus size={18} aria-hidden="true" />

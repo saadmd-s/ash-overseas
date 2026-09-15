@@ -28,6 +28,7 @@ export default defineConfig({
             'src/money/**/*.test.ts',
             'src/ledger/**/*.test.ts',
             'src/export/**/*.test.ts',
+            'src/client/**/*.test.ts',
             // Auth crypto is Web Crypto only, so it runs unchanged in Node.
             // That portability is the requirement (§16.1), not a convenience.
             'src/auth/**/*.test.ts',

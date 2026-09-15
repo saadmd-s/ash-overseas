@@ -15,7 +15,7 @@
  * character is embedded in a value; the header names the unit.
  */
 
-import { formatPaise } from '../money';
+import { assertPaise, formatPaise, sumPaise } from '../money';
 import type {
   AnyExport,
   BalancesExport,
@@ -57,12 +57,12 @@ export interface Sheet {
  */
 function rupees(paise: number | null | undefined): number | null {
   if (paise === null || paise === undefined) return null;
-  return paise / 100;
+  return assertPaise(paise) / 100;
 }
 
 /** Blank when zero, per §11.3's Debit/Credit columns. */
 function rupeesOrBlank(paise: number): number | null {
-  return paise === 0 ? null : paise / 100;
+  return paise === 0 ? null : assertPaise(paise) / 100;
 }
 
 /** The plain-language direction for column T (§11.4). */
@@ -106,7 +106,7 @@ function dateCell(ymd: string): Cell {
 
 function sum(values: (number | null)[]): number | null {
   const present = values.filter((v): v is number => v !== null);
-  return present.length ? present.reduce((a, b) => a + b, 0) : null;
+  return present.length ? rupees(sumPaise(present)) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,16 +217,16 @@ function buildDealerLedger(data: DealerLedgerExport, generatedAt: string): Sheet
       null,
       null,
       null,
-      sum(data.rows.map((r) => rupees(r.baseTotalPaise))),
-      sum(data.rows.map((r) => rupees(r.discountPaise))),
-      sum(data.rows.map((r) => rupees(r.freightPaise))),
+      sum(data.rows.map((r) => r.baseTotalPaise)),
+      sum(data.rows.map((r) => r.discountPaise)),
+      sum(data.rows.map((r) => r.freightPaise)),
       null,
-      sum(data.rows.map((r) => rupees(r.gstAmountPaise))),
+      sum(data.rows.map((r) => r.gstAmountPaise)),
       null,
-      sum(data.rows.map((r) => rupees(r.totalPaise))),
+      sum(data.rows.map((r) => r.totalPaise)),
       null,
-      sum(data.rows.map((r) => rupeesOrBlank(r.debitPaise))),
-      sum(data.rows.map((r) => rupeesOrBlank(r.creditPaise))),
+      sum(data.rows.map((r) => (r.debitPaise === 0 ? null : r.debitPaise))),
+      sum(data.rows.map((r) => (r.creditPaise === 0 ? null : r.creditPaise))),
       null,
       null,
       null,
@@ -315,16 +315,16 @@ function buildTransactions(data: TransactionsExport, generatedAt: string): Sheet
       null,
       null,
       null,
-      sum(data.rows.map((r) => rupees(r.baseTotalPaise))),
-      sum(data.rows.map((r) => rupees(r.discountPaise))),
-      sum(data.rows.map((r) => rupees(r.freightPaise))),
+      sum(data.rows.map((r) => r.baseTotalPaise)),
+      sum(data.rows.map((r) => r.discountPaise)),
+      sum(data.rows.map((r) => r.freightPaise)),
       null,
-      sum(data.rows.map((r) => rupees(r.gstAmountPaise))),
+      sum(data.rows.map((r) => r.gstAmountPaise)),
       null,
-      sum(data.rows.map((r) => rupees(r.totalPaise))),
+      sum(data.rows.map((r) => r.totalPaise)),
       null,
-      sum(data.rows.map((r) => rupeesOrBlank(r.debitPaise))),
-      sum(data.rows.map((r) => rupeesOrBlank(r.creditPaise))),
+      sum(data.rows.map((r) => (r.debitPaise === 0 ? null : r.debitPaise))),
+      sum(data.rows.map((r) => (r.creditPaise === 0 ? null : r.creditPaise))),
       null,
       null,
     ],
@@ -347,7 +347,7 @@ function buildBalances(data: BalancesExport, generatedAt: string): Sheet {
     r.transactionCount,
   ]);
 
-  const net = data.rows.reduce((sum_, r) => sum_ + r.balancePaise, 0);
+  const net = sumPaise(data.rows.map((r) => r.balancePaise));
 
   return {
     name: 'Balances',

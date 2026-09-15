@@ -279,3 +279,14 @@ describe('Dealer-balances sheet (§11.3)', () => {
     expect(sheet.totals[5]).toBe('You owe dealer');
   });
 });
+
+it('refuses an overflowing export aggregate', () => {
+  expect(() =>
+    buildSheet(ledger([row({ debitPaise: Number.MAX_SAFE_INTEGER }), row({ debitPaise: 1 })]), AT),
+  ).toThrow();
+});
+
+it('sums fractional rupees in paise before conversion', () => {
+  const sheet = buildSheet(ledger([row({ gstAmountPaise: 10 }), row({ gstAmountPaise: 20 })]), AT);
+  expect(sheet.totals[12]).toBe(0.3);
+});

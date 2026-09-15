@@ -173,3 +173,20 @@ export const idSequences = sqliteTable('id_sequences', {
   scope: text('scope').primaryKey(), // e.g. 'SALE-2026-08'
   nextValue: integer('next_value').notNull().default(1),
 });
+
+/** Optimistic database lock: every ledger/dealer mutation advances this row. */
+export const ledgerWriteRevision = sqliteTable('ledger_write_revision', {
+  id: integer('id').primaryKey(),
+  version: integer('version').notNull().default(0),
+});
+
+/** A successful creation response, committed with its financial write. */
+export const requestReceipts = sqliteTable('request_receipts', {
+  key: text('key').primaryKey(),
+  operation: text('operation').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  resultJson: text('result_json').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .default(sql`(unixepoch())`),
+});

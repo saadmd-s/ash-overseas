@@ -8,7 +8,13 @@
  */
 
 import { z } from 'zod';
-import { lineAmount } from '../money';
+import {
+  MAX_TRANSACTION_LINES,
+  MAX_NAME_LENGTH,
+  MAX_TEXT_LENGTH,
+  MAX_NOTES_LENGTH,
+} from '../limits';
+import { lineAmount, transactionTotals } from '../money';
 
 /**
  * Money. Integer paise, never a float, never NaN.
@@ -38,11 +44,18 @@ export function todayIST(now: Date = new Date()): string {
 }
 
 /** A calendar date, `YYYY-MM-DD`, not later than today in IST (§10.9). */
-export const entryDate = z
+const calendarDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD.')
-  .refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00Z`)), 'Not a real date.')
-  .refine((d) => d <= todayIST(), 'Date cannot be in the future.');
+  .refine((d) => {
+    const parsed = new Date(`${d}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === d;
+  }, 'Not a real date.');
+
+export const entryDate = calendarDate.refine(
+  (d) => d <= todayIST(),
+  'Date cannot be in the future.',
+);
 
 /** An invoice date may differ from the entry date but still cannot be future. */
 export const optionalPastDate = entryDate.nullish();
@@ -60,20 +73,20 @@ export const openingSchema = z.object({
 });
 
 export const createDealerSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required.'),
-  contact: z.string().trim().nullish(),
-  address: z.string().trim().nullish(),
-  gstin: z.string().trim().nullish(),
-  stateCode: z.string().trim().nullish(),
+  name: z.string().trim().max(MAX_NAME_LENGTH).min(1, 'Name is required.'),
+  contact: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
+  address: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
+  gstin: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
+  stateCode: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
   type: z.enum(['supplier', 'buyer', 'both']).default('both'),
   opening: openingSchema.optional(),
 });
 
 const transactionLine = z.object({
-  itemName: z.string().trim().nullish(),
+  itemName: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
   // Quantity is NOT money — it may legitimately be fractional (9,510.5 kg).
   quantity: z.number().finite().nonnegative(),
-  unit: z.string().trim().nullish(),
+  unit: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
   ratePaise: paise,
 });
 
@@ -82,17 +95,38 @@ export const createTransactionSchema = z
     dealerId: z.number().int().positive(),
     mode: z.enum(['purchase', 'sale']),
     entryDate,
-    invoiceNo: z.string().trim().nullish(),
+    invoiceNo: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
     invoiceDate: optionalPastDate,
-    referenceTag: z.string().trim().nullish(),
+    referenceTag: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
     bankAccount,
     gstRate: gstRate.default(18),
     discountPaise: paise.default(0),
     freightPaise: paise.default(0),
     isReturnNote: z.boolean().default(false),
-    notes: z.string().trim().nullish(),
-    lines: z.array(transactionLine).min(1, 'At least one line item is required.'),
+    notes: z.string().trim().max(MAX_NOTES_LENGTH).nullish(),
+    lines: z
+      .array(transactionLine)
+      .min(1, 'At least one line item is required.')
+      .max(MAX_TRANSACTION_LINES),
   })
+  .refine(
+    (t) => {
+      const linesPaise = t.lines.map((line) => lineAmount(line.quantity, line.ratePaise));
+      if (!linesPaise.every(Number.isSafeInteger)) return false;
+      return Object.values(
+        transactionTotals({
+          linesPaise,
+          discountPaise: t.discountPaise,
+          freightPaise: t.freightPaise,
+          gstRate: t.gstRate,
+        }),
+      ).every(Number.isSafeInteger);
+    },
+    {
+      message: 'The calculated amount is too large. Reduce the quantity or amount.',
+      path: ['lines'],
+    },
+  )
   .refine(
     (t) => {
       // §10.9 — discount may not exceed the base total. Checked here rather
@@ -112,19 +146,13 @@ export const createPaymentSchema = z.object({
   amountPaise: positivePaise,
   method: z.enum(['cash', 'bank', 'netbanking', 'cheque', 'upi']).nullish(),
   bankAccount: bankAccount.nullish(),
-  reference: z.string().trim().nullish(),
-  notes: z.string().trim().nullish(),
+  reference: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
+  notes: z.string().trim().max(MAX_NOTES_LENGTH).nullish(),
 });
 
 export const ledgerQuerySchema = z.object({
-  from: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  to: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
   type: z.enum(['transaction', 'payment']).optional(),
   mode: z.enum(['purchase', 'sale']).optional(),
   bankAccount: bankAccount.optional(),
@@ -140,11 +168,11 @@ export const ledgerQuerySchema = z.object({
  */
 export const patchDealerSchema = z
   .object({
-    name: z.string().trim().min(1).optional(),
-    contact: z.string().trim().nullish(),
-    address: z.string().trim().nullish(),
-    gstin: z.string().trim().nullish(),
-    stateCode: z.string().trim().nullish(),
+    name: z.string().trim().max(MAX_NAME_LENGTH).min(1).optional(),
+    contact: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
+    address: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
+    gstin: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
+    stateCode: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
     type: z.enum(['supplier', 'buyer', 'both']).optional(),
     isArchived: z.boolean().optional(),
   })
@@ -165,18 +193,19 @@ export const patchDealerSchema = z
  */
 export const patchTransactionSchema = z
   .object({
-    notes: z.string().trim().nullish(),
-    referenceTag: z.string().trim().nullish(),
+    notes: z.string().trim().max(MAX_NOTES_LENGTH).nullish(),
+    referenceTag: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
     /** Item-name corrections, addressed by line id (from `GET /transactions/:id`). */
     lines: z
       .array(
         z
           .object({
             id: z.number().int().positive(),
-            itemName: z.string().trim().nullish(),
+            itemName: z.string().trim().max(MAX_TEXT_LENGTH).nullish(),
           })
           .strict(),
       )
+      .max(MAX_TRANSACTION_LINES)
       .optional(),
   })
   .strict()
@@ -206,14 +235,8 @@ export const cursorParam = z.coerce.number().int().positive();
  * `includeArchived` and `format` alongside these, and Zod strips them.
  */
 export const exportFilterSchema = z.object({
-  from: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  to: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
   // The same two the dealer screen offers, so a filter that works on screen
   // works in the export and nothing else is silently accepted.
   type: z.enum(['transaction', 'payment']).optional(),

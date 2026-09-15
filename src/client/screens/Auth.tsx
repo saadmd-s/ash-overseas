@@ -22,7 +22,7 @@ import {
   UserCog,
 } from 'lucide-react';
 import { api, formatInstant, RequestFailed } from '../lib';
-import { Card, Chip, EmptyState, ErrorState, Loading, listCls } from '../ui';
+import { Button, Card, Chip, EmptyState, ErrorState, Loading, listCls } from '../ui';
 
 export interface AuthState {
   authenticated: boolean;
@@ -477,17 +477,39 @@ const ENTITY_LABEL: Record<string, string> = {
 export function AuditView() {
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
 
   const load = useCallback(() => {
     setError(null);
     api
-      .get<{ entries: AuditEntry[] }>('/api/audit')
-      .then((d) => setEntries(d.entries))
+      .get<{ entries: AuditEntry[]; nextCursor: number | null }>('/api/audit')
+      .then((d) => {
+        setEntries(d.entries);
+        setNextCursor(d.nextCursor);
+      })
       .catch(() => setError('Could not load the activity log.'));
   }, []);
 
   useEffect(load, [load]);
+
+  async function loadMore() {
+    if (nextCursor === null || loadingMore) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const d = await api.get<{ entries: AuditEntry[]; nextCursor: number | null }>(
+        `/api/audit?cursor=${nextCursor}`,
+      );
+      setEntries((previous) => [...(previous ?? []), ...d.entries]);
+      setNextCursor(d.nextCursor);
+    } catch {
+      setError('Could not load more activity.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -557,6 +579,11 @@ export function AuditView() {
             );
           })}
         </ul>
+      )}
+      {nextCursor !== null && (
+        <Button disabled={loadingMore} onClick={() => void loadMore()}>
+          {loadingMore ? 'Loading?' : 'Load more activity'}
+        </Button>
       )}
     </div>
   );

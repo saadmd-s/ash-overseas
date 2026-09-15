@@ -10,8 +10,11 @@ import type { Cell, Sheet } from '../../export/build';
 function escape(value: Cell): string {
   if (value === null) return '';
   if (typeof value === 'number') return String(value);
-  const text = typeof value === 'object' ? value.date : value;
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  const raw = typeof value === 'object' ? value.date : value;
+  // CSV has no cell types. Keep user-entered text from becoming a formula
+  // when opened in Excel; genuine numeric cells above remain numeric.
+  const text = /^[\s\uFEFF]*[=+\-@＝＋－＠]/u.test(raw) || /^[\t\r\n]/.test(raw) ? `'${raw}` : raw;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 export function toCsv(sheet: Sheet): string {

@@ -61,6 +61,10 @@
     "wrangler": "^4.24.3"
   },
   "pnpm": {
+    "overrides": {
+      "miniflare>sharp": "0.35.4",
+      "@esbuild-kit/core-utils>esbuild": "0.25.12"
+    },
     "onlyBuiltDependencies": [
       "esbuild",
       "workerd",

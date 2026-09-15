@@ -19,6 +19,7 @@ import { cursorParam, exportFilterSchema, patchDealerSchema } from './schemas';
 import { fail, flatten, idParam } from './http';
 import type { ExportFilters } from '../export/types';
 import type { Env } from './index';
+import { withLedgerWrite } from '../posting/write';
 
 export const reporting = new Hono<{ Bindings: Env }>();
 
@@ -32,6 +33,9 @@ reporting.get('/transactions', async (c) => {
   const db = makeDb(c.env.DB);
   const q = new URL(c.req.url).searchParams;
 
+  const filters = exportFilterSchema.safeParse(Object.fromEntries(q));
+  if (!filters.success)
+    return c.json(fail('VALIDATION_FAILED', 'Invalid filters.', flatten(filters.error)), 400);
   const conditions = [];
   const from = q.get('from');
   const to = q.get('to');
@@ -63,7 +67,9 @@ reporting.get('/transactions', async (c) => {
   if (cursor !== null) {
     const parsed = cursorParam.safeParse(cursor);
     if (!parsed.success) return c.json(fail('VALIDATION_FAILED', 'Invalid page cursor.'), 400);
-    conditions.push(sql`${schema.transactions.id} < ${parsed.data}`);
+    // Cursor order must match (entry_date, id), including backdated inserts.
+    conditions.push(sql`(${schema.transactions.entryDate}, ${schema.transactions.id}) <
+      (SELECT entry_date, id FROM transactions WHERE id = ${parsed.data})`);
   }
 
   const rows = await db
@@ -124,27 +130,31 @@ reporting.patch('/dealers/:id', async (c) => {
   }
 
   const db = makeDb(c.env.DB);
-  const existing = await db.select().from(schema.dealers).where(eq(schema.dealers.id, id.data));
-  if (!existing[0]) return c.json(fail('NOT_FOUND', 'No such dealer.'), 404);
+  return withLedgerWrite<Response>(db, async () => {
+    const existing = await db.select().from(schema.dealers).where(eq(schema.dealers.id, id.data));
+    if (!existing[0])
+      return { statements: [], result: () => c.json(fail('NOT_FOUND', 'No such dealer.'), 404) };
 
-  // Identity fields and the archive flag only — editing them never alters a
-  // posted figure (FR-D3), and archiving retains every entry (FR-D4).
-  await db.batch([
-    db.update(schema.dealers).set(parsed.data).where(eq(schema.dealers.id, id.data)),
-    db.insert(schema.auditLog).values({
-      action: 'edit',
-      entity: 'dealers',
-      entityId: id.data,
-      beforeJson: JSON.stringify({
-        name: existing[0].name,
-        type: existing[0].type,
-        isArchived: existing[0].isArchived,
-      }),
-      afterJson: JSON.stringify(parsed.data),
-    }),
-  ]);
-
-  return c.json({ ok: true });
+    // Identity fields and the archive flag only — editing them never alters a
+    // posted figure (FR-D3), and archiving retains every entry (FR-D4).
+    return {
+      statements: [
+        db.update(schema.dealers).set(parsed.data).where(eq(schema.dealers.id, id.data)),
+        db.insert(schema.auditLog).values({
+          action: 'edit',
+          entity: 'dealers',
+          entityId: id.data,
+          beforeJson: JSON.stringify({
+            name: existing[0].name,
+            type: existing[0].type,
+            isArchived: existing[0].isArchived,
+          }),
+          afterJson: JSON.stringify(parsed.data),
+        }),
+      ],
+      result: () => c.json({ ok: true }),
+    };
+  });
 });
 
 // ---------------------------------------------------------------------------

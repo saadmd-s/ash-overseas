@@ -14,7 +14,7 @@
  */
 
 import { Hono } from 'hono';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {
   addOpening,
@@ -25,7 +25,7 @@ import {
   makeDb,
   OpeningExists,
 } from '../posting/post';
-import { voidOpening, voidPayment, voidTransaction } from '../posting/recompute';
+import { VoidConflict, voidOpening, voidPayment, voidTransaction } from '../posting/recompute';
 import type { BatchItem } from '../posting/db';
 import {
   createDealerSchema,
@@ -38,6 +38,8 @@ import {
 import { modeMatcher, typeMatcher } from './export-query';
 import { fail, flatten, idParam } from './http';
 import type { Env } from './index';
+import { withLedgerWrite } from '../posting/write';
+import { retryIdentity } from './retry';
 
 export const api = new Hono<{ Bindings: Env }>();
 
@@ -63,18 +65,16 @@ api.get('/dealers', async (c) => {
   if (q) conditions.push(sql`lower(${schema.dealers.name}) LIKE lower(${`%${q}%`})`);
 
   const dealers = await db
-    .select()
+    .select({
+      ...getTableColumns(schema.dealers),
+      balancePaise: sql<number>`COALESCE((SELECT running_balance_paise FROM ledger_entries
+      WHERE dealer_id = dealers.id ORDER BY entry_date DESC, id DESC LIMIT 1), 0)`,
+    })
     .from(schema.dealers)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(asc(schema.dealers.name));
 
-  // Inline balances (FR-N2), served from the STORED running balance and never
-  // recomputed on read (FR-L1).
-  const withBalances = await Promise.all(
-    dealers.map(async (d) => ({ ...d, balancePaise: await currentBalance(db, d.id) })),
-  );
-
-  return c.json({ dealers: withBalances });
+  return c.json({ dealers });
 });
 
 api.post('/dealers', async (c) => {
@@ -86,7 +86,7 @@ api.post('/dealers', async (c) => {
     );
   }
 
-  const created = await createDealer(makeDb(c.env.DB), parsed.data);
+  const created = await createDealer(makeDb(c.env.DB), parsed.data, retryIdentity(c, parsed.data));
   return c.json({ id: created.id }, 201);
 });
 
@@ -201,7 +201,7 @@ api.post('/transactions', async (c) => {
   const problem = await assertPostableDealer(db, parsed.data.dealerId);
   if (problem) return c.json(fail(problem.code, problem.message), problem.status);
 
-  return c.json(await createTransaction(db, parsed.data), 201);
+  return c.json(await createTransaction(db, parsed.data, retryIdentity(c, parsed.data)), 201);
 });
 
 api.post('/payments', async (c) => {
@@ -214,7 +214,7 @@ api.post('/payments', async (c) => {
   const problem = await assertPostableDealer(db, parsed.data.dealerId);
   if (problem) return c.json(fail(problem.code, problem.message), problem.status);
 
-  return c.json(await createPayment(db, parsed.data), 201);
+  return c.json(await createPayment(db, parsed.data, retryIdentity(c, parsed.data)), 201);
 });
 
 /**
@@ -235,14 +235,13 @@ api.post('/dealers/:id/opening', async (c) => {
   if (problem) return c.json(fail(problem.code, problem.message), problem.status);
 
   try {
-    await addOpening(db, id.data, parsed.data);
+    return c.json(await addOpening(db, id.data, parsed.data, retryIdentity(c, parsed.data)), 201);
   } catch (error) {
     if (error instanceof OpeningExists) {
       return c.json(fail('OPENING_EXISTS', error.message), 409);
     }
     throw error;
   }
-  return c.json({ runningBalancePaise: await currentBalance(db, id.data) }, 201);
 });
 
 api.post('/dealers/:id/opening/void', async (c) => {
@@ -252,7 +251,8 @@ api.post('/dealers/:id/opening/void', async (c) => {
   try {
     return c.json(await voidOpening(makeDb(c.env.DB), id.data));
   } catch (error) {
-    return c.json(fail('VOID_FAILED', (error as Error).message), 409);
+    if (error instanceof VoidConflict) return c.json(fail('VOID_FAILED', error.message), 409);
+    throw error;
   }
 });
 
@@ -263,9 +263,8 @@ api.post('/transactions/:id/void', async (c) => {
   try {
     return c.json(await voidTransaction(makeDb(c.env.DB), id.data));
   } catch (error) {
-    // The messages thrown by the void path name no amount and no dealer, so
-    // this is safe to return verbatim (§16.3).
-    return c.json(fail('VOID_FAILED', (error as Error).message), 409);
+    if (error instanceof VoidConflict) return c.json(fail('VOID_FAILED', error.message), 409);
+    throw error;
   }
 });
 
@@ -276,7 +275,8 @@ api.post('/payments/:id/void', async (c) => {
   try {
     return c.json(await voidPayment(makeDb(c.env.DB), id.data));
   } catch (error) {
-    return c.json(fail('VOID_FAILED', (error as Error).message), 409);
+    if (error instanceof VoidConflict) return c.json(fail('VOID_FAILED', error.message), 409);
+    throw error;
   }
 });
 
@@ -307,113 +307,124 @@ api.patch('/transactions/:id', async (c) => {
   }
 
   const db = makeDb(c.env.DB);
-  const rows = await db
-    .select()
-    .from(schema.transactions)
-    .where(eq(schema.transactions.id, id.data))
-    .limit(1);
+  return withLedgerWrite<Response>(db, async () => {
+    const rows = await db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.id, id.data))
+      .limit(1);
 
-  const tx = rows[0];
-  if (!tx) return c.json(fail('NOT_FOUND', 'No such transaction.'), 404);
+    const tx = rows[0];
+    if (!tx)
+      return {
+        statements: [],
+        result: () => c.json(fail('NOT_FOUND', 'No such transaction.'), 404),
+      };
 
-  const edits = parsed.data;
-  const statements: BatchItem[] = [];
-  const before: Record<string, unknown> = {};
-  const after: Record<string, unknown> = {};
+    const edits = parsed.data;
+    const statements: BatchItem[] = [];
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
 
-  // --- the header -----------------------------------------------------------
-  // `'notes' in edits` rather than a truthiness check: Zod drops an absent key
-  // entirely, so this distinguishes "not sent" from "sent as null to clear it".
-  const headerPatch: { notes?: string | null; referenceTag?: string | null } = {};
-  if ('notes' in edits) {
-    headerPatch.notes = edits.notes ?? null;
-    before.notes = tx.notes;
-    after.notes = headerPatch.notes;
-  }
-  if ('referenceTag' in edits) {
-    headerPatch.referenceTag = edits.referenceTag ?? null;
-    before.referenceTag = tx.referenceTag;
-    after.referenceTag = headerPatch.referenceTag;
-  }
-
-  if (Object.keys(headerPatch).length > 0) {
-    statements.push(
-      db.update(schema.transactions).set(headerPatch).where(eq(schema.transactions.id, tx.id)),
-    );
-  }
-
-  /*
-   * The ledger row carries the reference tag as its display text, copied at
-   * create time. Leaving it behind would show the old tag in the dealer's
-   * history and the new one on the entry itself — the same record disagreeing
-   * with itself, which on a ledger reads as corruption. It is display text, not
-   * a figure; no amount and no balance is touched here.
-   */
-  if ('referenceTag' in edits) {
-    statements.push(
-      db
-        .update(schema.ledgerEntries)
-        .set({ description: headerPatch.referenceTag ?? tx.invoiceNo ?? null })
-        .where(
-          and(
-            eq(schema.ledgerEntries.sourceType, 'transaction'),
-            eq(schema.ledgerEntries.sourceId, tx.id),
-          ),
-        ),
-    );
-  }
-
-  // --- the lines ------------------------------------------------------------
-  if (edits.lines?.length) {
-    const existing = await db
-      .select({ id: schema.transactionLines.id, itemName: schema.transactionLines.itemName })
-      .from(schema.transactionLines)
-      .where(eq(schema.transactionLines.transactionId, tx.id));
-
-    // Addressed by primary key, and every one is checked to belong to THIS
-    // transaction — an id from another transaction must not be reachable
-    // through this route.
-    const known = new Map(existing.map((l) => [l.id, l]));
-    const stray = edits.lines.find((l) => !known.has(l.id));
-    if (stray) {
-      return c.json(fail('LINE_NOT_FOUND', 'That line is not part of this entry.'), 400);
+    // --- the header -----------------------------------------------------------
+    // `'notes' in edits` rather than a truthiness check: Zod drops an absent key
+    // entirely, so this distinguishes "not sent" from "sent as null to clear it".
+    const headerPatch: { notes?: string | null; referenceTag?: string | null } = {};
+    if ('notes' in edits) {
+      headerPatch.notes = edits.notes ?? null;
+      before.notes = tx.notes;
+      after.notes = headerPatch.notes;
+    }
+    if ('referenceTag' in edits) {
+      headerPatch.referenceTag = edits.referenceTag ?? null;
+      before.referenceTag = tx.referenceTag;
+      after.referenceTag = headerPatch.referenceTag;
     }
 
-    const lineBefore: Record<number, string | null> = {};
-    const lineAfter: Record<number, string | null> = {};
-
-    for (const line of edits.lines) {
-      const itemName = line.itemName ?? null;
-      lineBefore[line.id] = known.get(line.id)?.itemName ?? null;
-      lineAfter[line.id] = itemName;
+    if (Object.keys(headerPatch).length > 0) {
       statements.push(
-        db
-          .update(schema.transactionLines)
-          .set({ itemName })
-          .where(eq(schema.transactionLines.id, line.id)),
+        db.update(schema.transactions).set(headerPatch).where(eq(schema.transactions.id, tx.id)),
       );
     }
 
-    before.lines = lineBefore;
-    after.lines = lineAfter;
-  }
+    /*
+     * The ledger row carries the reference tag as its display text, copied at
+     * create time. Leaving it behind would show the old tag in the dealer's
+     * history and the new one on the entry itself — the same record disagreeing
+     * with itself, which on a ledger reads as corruption. It is display text, not
+     * a figure; no amount and no balance is touched here.
+     */
+    if ('referenceTag' in edits) {
+      statements.push(
+        db
+          .update(schema.ledgerEntries)
+          .set({ description: headerPatch.referenceTag ?? tx.invoiceNo ?? null })
+          .where(
+            and(
+              eq(schema.ledgerEntries.sourceType, 'transaction'),
+              eq(schema.ledgerEntries.sourceId, tx.id),
+            ),
+          ),
+      );
+    }
 
-  if (statements.length === 0) {
-    return c.json(fail('VALIDATION_FAILED', 'Nothing to change.'), 400);
-  }
+    // --- the lines ------------------------------------------------------------
+    if (edits.lines?.length) {
+      const existing = await db
+        .select({ id: schema.transactionLines.id, itemName: schema.transactionLines.itemName })
+        .from(schema.transactionLines)
+        .where(eq(schema.transactionLines.transactionId, tx.id));
 
-  // The audit row (FR-A4). Only the fields that actually changed, and not one
-  // of them is monetary — an audit trail is not a place to copy amounts (§16.3).
-  statements.push(
-    db.insert(schema.auditLog).values({
-      action: 'edit',
-      entity: 'transactions',
-      entityId: tx.id,
-      beforeJson: JSON.stringify(before),
-      afterJson: JSON.stringify(after),
-    }),
-  );
+      // Addressed by primary key, and every one is checked to belong to THIS
+      // transaction — an id from another transaction must not be reachable
+      // through this route.
+      const known = new Map(existing.map((l) => [l.id, l]));
+      const stray = edits.lines.find((l) => !known.has(l.id));
+      if (stray) {
+        return {
+          statements: [],
+          result: () => c.json(fail('LINE_NOT_FOUND', 'That line is not part of this entry.'), 400),
+        };
+      }
 
-  await db.batch(statements as [BatchItem, ...BatchItem[]]);
-  return c.json({ ok: true });
+      const lineBefore: Record<number, string | null> = {};
+      const lineAfter: Record<number, string | null> = {};
+
+      for (const line of edits.lines) {
+        const itemName = line.itemName ?? null;
+        lineBefore[line.id] = known.get(line.id)?.itemName ?? null;
+        lineAfter[line.id] = itemName;
+        statements.push(
+          db
+            .update(schema.transactionLines)
+            .set({ itemName })
+            .where(eq(schema.transactionLines.id, line.id)),
+        );
+      }
+
+      before.lines = lineBefore;
+      after.lines = lineAfter;
+    }
+
+    if (statements.length === 0) {
+      return {
+        statements: [],
+        result: () => c.json(fail('VALIDATION_FAILED', 'Nothing to change.'), 400),
+      };
+    }
+
+    // The audit row (FR-A4). Only the fields that actually changed, and not one
+    // of them is monetary — an audit trail is not a place to copy amounts (§16.3).
+    statements.push(
+      db.insert(schema.auditLog).values({
+        action: 'edit',
+        entity: 'transactions',
+        entityId: tx.id,
+        beforeJson: JSON.stringify(before),
+        afterJson: JSON.stringify(after),
+      }),
+    );
+
+    return { statements, result: () => c.json({ ok: true }) };
+  });
 });

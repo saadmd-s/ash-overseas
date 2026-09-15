@@ -7,13 +7,22 @@
 
 import { useEffect, useState } from 'react';
 import { formatPaise } from '../../money';
-import { api, draft, RequestFailed, todayIST, type BankAccount, type Dealer } from '../lib';
+import {
+  api,
+  bankPreference,
+  draft,
+  RequestFailed,
+  todayIST,
+  type BankAccount,
+  type Dealer,
+} from '../lib';
 import { MoneyInput } from '../components';
 import { Button, Card, Field, Labeled, Segmented, inputCls, panelCls } from '../ui';
 
 type Method = 'cash' | 'bank' | 'netbanking' | 'cheque' | 'upi';
 
 interface FormDraft {
+  saveSeed?: string;
   entryDate: string;
   direction: 'received' | 'paid';
   amountPaise: number | null;
@@ -33,18 +42,18 @@ export function PaymentForm({
   onCancel: () => void;
 }) {
   const draftKey = `pay:${dealer.id}`;
-  const [form, setForm] = useState<FormDraft>(
-    () =>
-      draft.load<FormDraft>(draftKey) ?? {
-        entryDate: todayIST(),
-        direction: 'received',
-        amountPaise: null,
-        method: '',
-        bankAccount: (localStorage.getItem('lastBankAccount') as BankAccount | null) ?? 'od',
-        reference: '',
-        notes: '',
-      },
-  );
+  const [form, setForm] = useState<FormDraft>(() => ({
+    saveSeed: crypto.randomUUID(),
+    ...(draft.load<FormDraft>(draftKey) ?? {
+      entryDate: todayIST(),
+      direction: 'received',
+      amountPaise: null,
+      method: '',
+      bankAccount: bankPreference.load(),
+      reference: '',
+      notes: '',
+    }),
+  }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -60,17 +69,21 @@ export function PaymentForm({
     setFailure(null);
     setErrors({});
     try {
-      await api.post('/api/payments', {
-        dealerId: dealer.id,
-        entryDate: form.entryDate,
-        direction: form.direction,
-        amountPaise: form.amountPaise,
-        method: form.method || null,
-        // §10.7 — the bank tag is hidden, and omitted, when the method is cash.
-        bankAccount: form.method === 'cash' ? null : form.bankAccount,
-        reference: form.reference || null,
-        notes: form.notes || null,
-      });
+      await api.create(
+        '/api/payments',
+        {
+          dealerId: dealer.id,
+          entryDate: form.entryDate,
+          direction: form.direction,
+          amountPaise: form.amountPaise,
+          method: form.method || null,
+          // §10.7 — the bank tag is hidden, and omitted, when the method is cash.
+          bankAccount: form.method === 'cash' ? null : form.bankAccount,
+          reference: form.reference || null,
+          notes: form.notes || null,
+        },
+        form.saveSeed!,
+      );
 
       draft.clear(draftKey);
       onSaved(`Payment saved — ${formatPaise(form.amountPaise ?? 0)}`);
@@ -79,7 +92,7 @@ export function PaymentForm({
         setErrors(e.detail.fields ?? {});
         setFailure(e.detail.message);
       } else {
-        setFailure('Could not save.');
+        setFailure('Could not confirm the save. Check the dealer history before trying again.');
       }
     } finally {
       setSaving(false);

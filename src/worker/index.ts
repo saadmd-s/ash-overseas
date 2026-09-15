@@ -6,6 +6,9 @@
  */
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { MoneyRangeError } from '../money';
+import { WriteConflict } from '../posting/write';
 import { api } from './routes';
 import { reporting } from './routes-reporting';
 import { csrfGuard, privateAuth, publicAuth, requireSession, securityHeaders } from './auth';
@@ -32,6 +35,13 @@ const app = new Hono<{ Bindings: Env }>();
 // 1. §16.2 — the six security headers on EVERY response, including static
 //    assets and errors. First in, so nothing can return ahead of it.
 app.use('*', securityHeaders);
+
+// Private JSON and auth responses must not be retained by HTTP caches,
+// including callers other than our no-store fetch helper.
+app.use('/api/*', async (c, next) => {
+  await next();
+  c.header('Cache-Control', 'no-store');
+});
 
 /**
  * 1b. HTTPS only, in production.
@@ -73,6 +83,29 @@ app.use('*', async (c, next) => {
 // 3. §16.3 — CSRF. Ahead of the gate, so a cross-site request is refused before
 //    its cookie is even looked at.
 app.use('/api/*', csrfGuard);
+app.use(
+  '/api/*',
+  bodyLimit({
+    maxSize: 256 * 1024,
+    onError: (c) =>
+      c.json(
+        {
+          error: {
+            code: 'BODY_TOO_LARGE',
+            message: 'This entry is too large. Shorten the notes or use fewer lines.',
+          },
+        },
+        413,
+      ),
+  }),
+);
+app.use('/api/*', async (c, next) => {
+  const key = c.req.header('Idempotency-Key');
+  if (key !== undefined && !/^[A-Za-z0-9_-]{16,128}$/.test(key)) {
+    return c.json({ error: { code: 'VALIDATION_FAILED', message: 'Invalid save key.' } }, 400);
+  }
+  return next();
+});
 
 // 4. The three PUBLIC auth routes (§14): login, me, logout. Mounted before the
 //    gate rather than excepted from inside it — an exception list is the kind
@@ -217,8 +250,20 @@ app.all('*', async (c) => {
  * outermost middleware and Hono applies the error handler beneath it.
  */
 app.onError((err, c) => {
+  if (err instanceof WriteConflict || err instanceof MoneyRangeError) {
+    return c.json(
+      {
+        error: {
+          code: err instanceof MoneyRangeError ? 'AMOUNT_OUT_OF_RANGE' : 'WRITE_CONFLICT',
+          message: err.message,
+        },
+      },
+      err instanceof MoneyRangeError ? 400 : 409,
+    );
+  }
   const { pathname } = new URL(c.req.url);
-  console.error(`${c.req.method} ${pathname} failed: ${err.name}: ${err.message}`);
+  // ORM exception messages can contain SQL parameters, including private data.
+  console.error(`${c.req.method} request failed: ${err.name}`);
 
   if (pathname.startsWith('/api/')) {
     return c.json(

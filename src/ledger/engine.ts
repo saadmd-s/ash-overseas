@@ -9,7 +9,7 @@
  * match whatever the engine happened to produce.
  */
 
-import type { Paise } from '../money';
+import { applyMovement, type Paise } from '../money';
 
 export type BankAccount = 'od' | 'current';
 
@@ -83,7 +83,11 @@ export function post(priorBalancePaise: Paise, event: LedgerEvent): PostedEntry 
   return {
     ...movement,
     // The whole of the sign convention, in one line (§5).
-    runningBalancePaise: priorBalancePaise + movement.debitPaise - movement.creditPaise,
+    runningBalancePaise: applyMovement(
+      priorBalancePaise,
+      movement.debitPaise,
+      movement.creditPaise,
+    ),
     label: labelFor(event),
     bankAccount: bankAccountFor(event),
     entryDate: event.entryDate,
@@ -192,7 +196,7 @@ export function replay(entries: ReplayableEntry[]): PostedEntry[] {
 
   let balance = 0;
   return ordered.map((entry) => {
-    balance = balance + entry.debitPaise - entry.creditPaise;
+    balance = applyMovement(balance, entry.debitPaise, entry.creditPaise);
     return {
       debitPaise: entry.debitPaise,
       creditPaise: entry.creditPaise,

@@ -360,14 +360,47 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
+  const closeState = useRef({ busy, onClose });
+  closeState.current = { busy, onClose };
   useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) onClose();
+      if (e.key === 'Escape' && !closeState.current.busy) closeState.current.onClose();
+      if (e.key !== 'Tab' || !ref.current) return;
+      const controls = [
+        ...ref.current.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+        ),
+      ].filter((el) => el.getClientRects().length > 0);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (!first) {
+        e.preventDefault();
+        ref.current.focus();
+      } else if (
+        e.shiftKey &&
+        (document.activeElement === first || document.activeElement === ref.current)
+      ) {
+        e.preventDefault();
+        last.focus();
+      } else if (
+        !e.shiftKey &&
+        (document.activeElement === last || document.activeElement === ref.current)
+      ) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, busy]);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
 
   return (
     <div

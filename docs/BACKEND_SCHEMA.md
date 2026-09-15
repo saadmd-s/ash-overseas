@@ -482,3 +482,11 @@ an unauthenticated write path into the only thing protecting the data.
 | 5   | `source_id` conventions for `opening` and `reversal` unstated         | Ambiguous joins                      | **Still unstated in the full SRS.** §15.8 rule 3 requires every entry to trace via `source_type` + `source_id`; the derived table in §4.5 stands |
 | 6   | No unique constraint on `transaction_lines (transaction_id, line_no)` | Duplicate line numbers possible      | Recommend adding                                                                                                                                 |
 | 7   | Replay's row-exclusion rule                                           | Intermediate rows may differ         | **RESOLVED by reading** — §15.8 rule 5 implies reversal rows are replayed, not re-derived (§8.4)                                                 |
+
+## Guarded writes and retry receipts (September 2026)
+
+Migration `0001_silly_impossible_man.sql` adds a singleton `ledger_write_revision` row (`id = 1`, monotonic integer `version`) and `request_receipts` (`key`, operation, SHA-256 payload fingerprint, result JSON, creation timestamp). The row is initialized lazily inside the first guarded batch.
+
+The posting layer reads the revision before preparing a mutation. The committing batch checks and increments it before writing source, ledger, replay, audit and optional receipt rows. A stale revision deliberately fails a NOT NULL constraint, rolling back the complete batch before bounded re-preparation. Other database failures are not automatically retried because their commit outcome may be uncertain. This works across Worker instances; it is not an in-memory lock.
+
+A matching receipt returns the original response. Reusing its key with a different operation or payload produces a conflict. Receipts and financial records commit together, and receipts must be retained in backups. Running balances are still stored at write time; reads do not recompute them. Backdated replay updates use one JSON-backed UPDATE rather than a statement per history row.

@@ -26,33 +26,43 @@ type Route =
   | { name: 'all' }
   | { name: 'new-dealer' }
   | { name: 'settings' }
-  | { name: 'audit' };
+  | { name: 'audit' }
+  | { name: 'not-found' };
 
 function parse(pathname: string): Route {
   const parts = pathname.split('/').filter(Boolean);
-  if (parts[0] === 'purchase') return { name: 'list', type: 'supplier' };
-  if (parts[0] === 'sale') return { name: 'list', type: 'buyer' };
-  if (parts[0] === 'transactions') return { name: 'all' };
-  if (parts[0] === 'settings') return { name: 'settings' };
-  if (parts[0] === 'audit') return { name: 'audit' };
+  if (parts.length === 0) return { name: 'home' };
+  if (parts.length === 1) {
+    if (parts[0] === 'purchase') return { name: 'list', type: 'supplier' };
+    if (parts[0] === 'sale') return { name: 'list', type: 'buyer' };
+    if (parts[0] === 'transactions') return { name: 'all' };
+    if (parts[0] === 'settings') return { name: 'settings' };
+    if (parts[0] === 'audit') return { name: 'audit' };
+    if (parts[0] === 'dealers') return { name: 'dealers' };
+  }
   if (parts[0] === 'dealers') {
-    if (parts[1] === undefined) return { name: 'dealers' };
-    if (parts[1] === 'new') return { name: 'new-dealer' };
+    if (parts.length === 2 && parts[1] === 'new') return { name: 'new-dealer' };
     const id = Number(parts[1]);
-    if (Number.isInteger(id) && id > 0) {
-      if (parts[2] === 'transaction') {
-        return { name: 'transaction', id, mode: parts[3] === 'purchase' ? 'purchase' : 'sale' };
+    if (/^[1-9]\d*$/.test(parts[1] ?? '') && Number.isSafeInteger(id)) {
+      if (parts.length === 2) return { name: 'dealer', id };
+      if (parts.length === 3 && parts[2] === 'payment') return { name: 'payment', id };
+      if (
+        parts.length === 4 &&
+        parts[2] === 'transaction' &&
+        (parts[3] === 'purchase' || parts[3] === 'sale')
+      ) {
+        return { name: 'transaction', id, mode: parts[3] };
       }
-      if (parts[2] === 'payment') return { name: 'payment', id };
-      return { name: 'dealer', id };
     }
   }
-  return { name: 'home' };
+  return { name: 'not-found' };
 }
 
 /** Which navigation destination a route belongs to, and what the header says. */
 function chromeFor(route: Route): { nav: NavKey; title: string } {
   switch (route.name) {
+    case 'not-found':
+      return { nav: 'other', title: 'Page not found' };
     case 'home':
       return { nav: 'home', title: 'Home' };
     case 'list':
@@ -188,6 +198,13 @@ function Screen({
   onAuthChanged: () => void;
 }) {
   switch (route.name) {
+    case 'not-found':
+      return (
+        <div>
+          <p>This page could not be found.</p>
+          <a href="/">Go home</a>
+        </div>
+      );
     case 'home':
       return <Home navigate={navigate} />;
 
@@ -219,7 +236,7 @@ function Screen({
     case 'dealer':
     case 'transaction':
     case 'payment':
-      return <WithDealer route={route} navigate={navigate} showToast={showToast} />;
+      return <WithDealer key={route.id} route={route} navigate={navigate} showToast={showToast} />;
   }
 }
 
@@ -253,6 +270,7 @@ function WithDealer({
   if (route.name === 'transaction') {
     return (
       <TransactionForm
+        key={route.mode}
         dealer={dealer}
         mode={route.mode}
         onSaved={(message) => {

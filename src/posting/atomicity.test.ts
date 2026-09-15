@@ -57,10 +57,12 @@ async function counts() {
  * insert violating the NOT NULL on `ledger_entries.running_balance_paise`.
  */
 function poisonStatement(): BatchItem {
-  return db.run(
-    sql`INSERT INTO ledger_entries (dealer_id, entry_date, source_type, running_balance_paise)
-        VALUES (${dealerId}, '2026-08-01', 'transaction', NULL)`,
-  ) as unknown as BatchItem;
+  return db.insert(schema.ledgerEntries).values({
+    dealerId,
+    entryDate: '2026-08-01',
+    sourceType: 'transaction',
+    runningBalancePaise: sql`NULL`,
+  });
 }
 
 const sampleTransaction = {
@@ -81,7 +83,7 @@ describe('§15.3 — a forced mid-batch failure leaves no partial rows', () => {
       transactions: 0,
       lines: 0,
       ledgerEntries: 0,
-      audit: 0,
+      audit: 1,
       sequences: 0,
     });
 
@@ -135,7 +137,7 @@ describe('§15.3 — a forced mid-batch failure leaves no partial rows', () => {
 
     const payments = await db.select().from(schema.payments);
     expect(payments).toHaveLength(0);
-    expect(await counts()).toMatchObject({ ledgerEntries: 0, audit: 0, sequences: 0 });
+    expect(await counts()).toMatchObject({ ledgerEntries: 0, audit: 1, sequences: 0 });
   });
 
   it('leaves an earlier committed write intact', async () => {
@@ -169,7 +171,7 @@ describe('§15.3 — the successful batch writes every row together', () => {
       transactions: 1,
       lines: 2,
       ledgerEntries: 1,
-      audit: 1,
+      audit: 2, // dealer + transaction
       sequences: 1,
     });
   });
@@ -182,7 +184,9 @@ describe('§15.3 — the successful batch writes every row together', () => {
 
     const lines = await db.select().from(schema.transactionLines);
     const [entry] = await db.select().from(schema.ledgerEntries);
-    const [audit] = await db.select().from(schema.auditLog);
+    const audit = (await db.select().from(schema.auditLog)).find(
+      (r) => r.entity === 'transactions',
+    )!;
 
     expect(lines.map((l) => l.transactionId)).toEqual([created.id, created.id]);
     expect(lines.map((l) => l.lineNo)).toEqual([1, 2]);

@@ -8,6 +8,13 @@
       "when": 1787999126096,
       "tag": "0000_known_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789403457313,
+      "tag": "0001_silly_impossible_man",
+      "breakpoints": true
     }
   ]
 }

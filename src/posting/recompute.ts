@@ -1,170 +1,54 @@
-/**
- * Replay and voids — SRS §15.5, §15.6, §15.7.
- *
- * Like the rest of the posting layer this does no arithmetic of its own: it
- * reads rows, hands them to the pure `replay()`, and writes back what comes out.
- */
-
-import { and, asc, eq, sql } from 'drizzle-orm';
+/** Atomic correction and replay; all money decisions stay in the pure engine. */
+import { and, asc, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import {
-  compareEntryOrder,
-  replay,
-  verifyRunningBalances,
-  type ReplayableEntry,
-} from '../ledger/engine';
+import { verifyRunningBalances, type ReplayableEntry } from '../ledger/engine';
+import { ledgerRows, planAppend, replayUpdates } from './ledger-write';
+import { withLedgerWrite, type PreparedWrite } from './write';
 import type { BatchItem, Db } from './db';
 import type { Paise } from '../money';
 
-/**
- * Which ledger rows a replay sees.
- *
- * §15.5 says "all non-voided entries". §15.8 rule 5 settles what that means for
- * reversals: a voided source keeps its rows, and "their effect is neutralised
- * ONLY by reversing entries" — so the original entry and its reversal both stay
- * in the replay, cancelling each other out. Dropping the pair instead would
- * reach the same final balance but erase the correction from the history, and
- * §10.5 and §11.4 both require the reversal to remain visible.
- */
-async function replayableEntries(db: Db, dealerId: number) {
-  return db
-    .select({
-      id: schema.ledgerEntries.id,
-      entryDate: schema.ledgerEntries.entryDate,
-      debitPaise: schema.ledgerEntries.debitPaise,
-      creditPaise: schema.ledgerEntries.creditPaise,
-      runningBalancePaise: schema.ledgerEntries.runningBalancePaise,
-      label: schema.ledgerEntries.label,
-      bankAccount: schema.ledgerEntries.bankAccount,
-    })
-    .from(schema.ledgerEntries)
-    .where(eq(schema.ledgerEntries.dealerId, dealerId))
-    .orderBy(asc(schema.ledgerEntries.entryDate), asc(schema.ledgerEntries.id));
-}
-
-function asReplayable(rows: Awaited<ReturnType<typeof replayableEntries>>): ReplayableEntry[] {
-  return rows.map((r) => ({
-    id: r.id,
-    entryDate: r.entryDate,
-    debitPaise: r.debitPaise,
-    creditPaise: r.creditPaise,
-    label: (r.label ?? 'Sale') as ReplayableEntry['label'],
-    bankAccount: r.bankAccount,
-  }));
-}
-
-/**
- * §15.5 — replay all entries for a dealer in `(entry_date, id)` order and
- * rewrite every running balance from zero.
- *
- * Called after every void (§15.7) and after any back-dated insert that lands
- * before existing entries (§15.6).
- *
- * The writes are batched, as §15.7 requires. Only rows whose balance actually
- * changed are written — a replay after a late-dated insert usually touches
- * nothing, and an empty batch is skipped entirely.
- */
 export async function recomputeLedger(db: Db, dealerId: number): Promise<{ updated: number }> {
-  /*
-   * Sorted here with the engine's OWN comparator, even though the query
-   * already orders by (entry_date, id).
-   *
-   * The loop below pairs `rows[i]` with `recomputed[i]` by position, and
-   * `replay` re-sorts internally — so the two agree only for as long as the SQL
-   * ORDER BY and `compareEntryOrder` stay identical. If they ever diverged, this
-   * would write each recomputed balance onto the WRONG entry: no error, no
-   * failing insert, just silently corrupted running balances across a dealer's
-   * whole history. Sorting both sides through the same function removes the
-   * coupling rather than documenting it.
-   */
-  const rows = (await replayableEntries(db, dealerId)).sort(compareEntryOrder);
-  if (rows.length === 0) return { updated: 0 };
-
-  const recomputed = replay(asReplayable(rows));
-
-  const updates: BatchItem[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const stored = rows[i].runningBalancePaise;
-    const expected = recomputed[i].runningBalancePaise;
-    if (stored !== expected) {
+  return withLedgerWrite(db, async () => {
+    const { updates, changed: updated } = replayUpdates(db, await ledgerRows(db, dealerId));
+    if (updated)
       updates.push(
-        db
-          .update(schema.ledgerEntries)
-          .set({ runningBalancePaise: expected })
-          .where(eq(schema.ledgerEntries.id, rows[i].id)),
+        db.insert(schema.auditLog).values({
+          action: 'replay',
+          entity: 'dealers',
+          entityId: dealerId,
+          afterJson: JSON.stringify({ updated }),
+        }),
       );
-    }
-  }
-
-  if (updates.length === 0) return { updated: 0 };
-  await db.batch(updates as [BatchItem, ...BatchItem[]]);
-  return { updated: updates.length };
+    return { statements: updates, result: () => ({ updated }) };
+  });
 }
 
-/**
- * §15.8 — does a replay reproduce every stored running balance?
- *
- * The arithmetic is integer and exact, so a divergence is a defect, never
- * rounding drift.
- */
 export async function checkLedgerIntegrity(db: Db, dealerId: number) {
-  const rows = await replayableEntries(db, dealerId);
+  const rows = await ledgerRows(db, dealerId);
   return verifyRunningBalances(
-    rows.map((r) => ({
-      id: r.id,
-      entryDate: r.entryDate,
-      debitPaise: r.debitPaise,
-      creditPaise: r.creditPaise,
-      runningBalancePaise: r.runningBalancePaise,
-      label: (r.label ?? 'Sale') as ReplayableEntry['label'],
-      bankAccount: r.bankAccount,
-    })),
+    rows.map((r) => ({ ...r, label: (r.label ?? 'Sale') as ReplayableEntry['label'] })),
   );
 }
-
-// ---------------------------------------------------------------------------
-// Voids — §15.7
-// ---------------------------------------------------------------------------
 
 export interface VoidResult {
   reversalEntryId: number;
   runningBalancePaise: Paise;
 }
+export class VoidConflict extends Error {}
 
-/**
- * Void a transaction or a payment.
- *
- * §15.7, in order, all in one batch:
- *   1. post a reversing ledger row, equal and opposite, linked to the original
- *   2. flag the source `is_voided` — its own rows are retained in full
- *   3. write an audit row with before/after state
- * then run `recomputeLedger`.
- *
- * Nothing is ever hard-deleted (FR-A1, §15.8 rule 1).
- */
-async function voidSource(
+async function prepareVoid(
   db: Db,
   opts: {
     sourceType: 'transaction' | 'payment' | 'opening';
-    /** Null for an opening, which has no source record. */
     sourceId: number | null;
     dealerId: number;
-    /** Null for an opening: there is no source row to flag. The cancellation
-     *  row, linked by `reverses_entry_id`, is the record that it was deleted. */
     flagVoided: BatchItem | null;
-    /** Addresses the original row directly when there is no source id. */
     originalEntryId?: number;
     beforeJson: string;
   },
-): Promise<VoidResult> {
-  const originals = await db
-    .select({
-      id: schema.ledgerEntries.id,
-      entryDate: schema.ledgerEntries.entryDate,
-      debitPaise: schema.ledgerEntries.debitPaise,
-      creditPaise: schema.ledgerEntries.creditPaise,
-      bankAccount: schema.ledgerEntries.bankAccount,
-    })
+): Promise<PreparedWrite<VoidResult>> {
+  const [original] = await db
+    .select()
     .from(schema.ledgerEntries)
     .where(
       opts.originalEntryId !== undefined
@@ -175,42 +59,37 @@ async function voidSource(
           ),
     )
     .limit(1);
-
-  const original = originals[0];
   if (!original) throw new Error('No ledger entry found for that record.');
-
-  const alreadyReversed = await db
-    .select({ id: schema.ledgerEntries.id })
+  const [reversed] = await db
+    .select()
     .from(schema.ledgerEntries)
     .where(eq(schema.ledgerEntries.reversesEntryId, original.id))
     .limit(1);
-  if (alreadyReversed[0]) throw new Error('That entry has already been deleted.');
-
-  // The reversal is equal and opposite. Its running balance is provisional —
-  // recomputeLedger below rewrites every balance from zero, which is what makes
-  // the result correct even when the void is of a back-dated entry.
-  const provisional = sql`(SELECT COALESCE(
-      (SELECT running_balance_paise FROM ledger_entries
-        WHERE dealer_id = ${opts.dealerId}
-        ORDER BY entry_date DESC, id DESC LIMIT 1), 0)
-    + ${original.creditPaise} - ${original.debitPaise})`;
-
+  if (reversed) throw new VoidConflict('That entry has already been deleted.');
+  const plan = await planAppend(db, opts.dealerId, {
+    kind: 'reversal',
+    reverses: original,
+    entryDate: original.entryDate,
+    bankAccount: original.bankAccount,
+  });
+  const entry = plan.entry;
   const statements: BatchItem[] = [
-    db.insert(schema.ledgerEntries).values({
-      dealerId: opts.dealerId,
-      // The reversal carries the ORIGINAL entry's date, so replay places it
-      // beside what it undoes rather than at the end of the history.
-      entryDate: original.entryDate,
-      sourceType: 'reversal',
-      sourceId: opts.sourceId,
-      reversesEntryId: original.id,
-      debitPaise: original.creditPaise,
-      creditPaise: original.debitPaise,
-      runningBalancePaise: provisional as unknown as number,
-      bankAccount: original.bankAccount,
-      label: 'Reversal',
-      description: 'Cancels a deleted entry',
-    }),
+    db
+      .insert(schema.ledgerEntries)
+      .values({
+        dealerId: opts.dealerId,
+        entryDate: original.entryDate,
+        sourceType: 'reversal',
+        sourceId: opts.sourceId,
+        reversesEntryId: original.id,
+        debitPaise: entry.debitPaise,
+        creditPaise: entry.creditPaise,
+        runningBalancePaise: entry.runningBalancePaise,
+        bankAccount: original.bankAccount,
+        label: 'Reversal',
+        description: 'Cancels a deleted entry',
+      })
+      .returning({ id: schema.ledgerEntries.id }),
     db.insert(schema.auditLog).values({
       action: 'void',
       entity:
@@ -225,56 +104,44 @@ async function voidSource(
     }),
   ];
   if (opts.flagVoided) statements.push(opts.flagVoided);
-
-  await db.batch(statements as [BatchItem, ...BatchItem[]]);
-
-  const reversal = await db
-    .select({ id: schema.ledgerEntries.id })
-    .from(schema.ledgerEntries)
-    .where(eq(schema.ledgerEntries.reversesEntryId, original.id))
-    .limit(1);
-
-  await recomputeLedger(db, opts.dealerId);
-
-  const balance = await db
-    .select({ balance: schema.ledgerEntries.runningBalancePaise })
-    .from(schema.ledgerEntries)
-    .where(eq(schema.ledgerEntries.dealerId, opts.dealerId))
-    .orderBy(sql`entry_date DESC`, sql`id DESC`)
-    .limit(1);
-
+  statements.push(...plan.updates);
   return {
-    reversalEntryId: reversal[0]!.id,
-    runningBalancePaise: balance[0]?.balance ?? 0,
+    statements,
+    result: (results) => ({
+      reversalEntryId: (results[0] as { id: number }[])[0].id,
+      runningBalancePaise: plan.closingBalance,
+    }),
   };
 }
 
 export async function voidTransaction(db: Db, transactionId: number): Promise<VoidResult> {
-  const rows = await db
-    .select()
-    .from(schema.transactions)
-    .where(eq(schema.transactions.id, transactionId))
-    .limit(1);
+  return withLedgerWrite(db, async () => {
+    const rows = await db
+      .select()
+      .from(schema.transactions)
+      .where(eq(schema.transactions.id, transactionId))
+      .limit(1);
 
-  const tx = rows[0];
-  if (!tx) throw new Error('No such transaction.');
-  if (tx.isVoided) throw new Error('That entry has already been deleted.');
+    const tx = rows[0];
+    if (!tx) throw new VoidConflict('No such transaction.');
+    if (tx.isVoided) throw new VoidConflict('That entry has already been deleted.');
 
-  return voidSource(db, {
-    sourceType: 'transaction',
-    sourceId: transactionId,
-    dealerId: tx.dealerId,
-    flagVoided: db
-      .update(schema.transactions)
-      .set({ isVoided: true })
-      .where(eq(schema.transactions.id, transactionId)),
-    beforeJson: JSON.stringify({
-      humanId: tx.humanId,
-      mode: tx.mode,
-      entryDate: tx.entryDate,
-      grandTotalPaise: tx.grandTotalPaise,
-      isVoided: false,
-    }),
+    return prepareVoid(db, {
+      sourceType: 'transaction',
+      sourceId: transactionId,
+      dealerId: tx.dealerId,
+      flagVoided: db
+        .update(schema.transactions)
+        .set({ isVoided: true })
+        .where(eq(schema.transactions.id, transactionId)),
+      beforeJson: JSON.stringify({
+        humanId: tx.humanId,
+        mode: tx.mode,
+        entryDate: tx.entryDate,
+        grandTotalPaise: tx.grandTotalPaise,
+        isVoided: false,
+      }),
+    });
   });
 }
 
@@ -286,69 +153,73 @@ export async function voidTransaction(db: Db, transactionId: number): Promise<Vo
  * has no source record to flag.
  */
 export async function voidOpening(db: Db, dealerId: number): Promise<VoidResult> {
-  const openings = await db
-    .select()
-    .from(schema.ledgerEntries)
-    .where(
-      and(
-        eq(schema.ledgerEntries.dealerId, dealerId),
-        eq(schema.ledgerEntries.sourceType, 'opening'),
-      ),
-    )
-    .orderBy(asc(schema.ledgerEntries.id));
-
-  for (const opening of openings) {
-    const reversed = await db
-      .select({ id: schema.ledgerEntries.id })
+  return withLedgerWrite(db, async () => {
+    const openings = await db
+      .select()
       .from(schema.ledgerEntries)
-      .where(eq(schema.ledgerEntries.reversesEntryId, opening.id))
-      .limit(1);
-    if (reversed[0]) continue;
+      .where(
+        and(
+          eq(schema.ledgerEntries.dealerId, dealerId),
+          eq(schema.ledgerEntries.sourceType, 'opening'),
+        ),
+      )
+      .orderBy(asc(schema.ledgerEntries.id));
 
-    return voidSource(db, {
-      sourceType: 'opening',
-      sourceId: null,
-      dealerId,
-      flagVoided: null,
-      originalEntryId: opening.id,
-      beforeJson: JSON.stringify({
-        opening: {
-          entryDate: opening.entryDate,
-          debitPaise: opening.debitPaise,
-          creditPaise: opening.creditPaise,
-        },
-      }),
-    });
-  }
+    for (const opening of openings) {
+      const reversed = await db
+        .select({ id: schema.ledgerEntries.id })
+        .from(schema.ledgerEntries)
+        .where(eq(schema.ledgerEntries.reversesEntryId, opening.id))
+        .limit(1);
+      if (reversed[0]) continue;
 
-  throw new Error('This dealer has no balance from the old book to delete.');
+      return prepareVoid(db, {
+        sourceType: 'opening',
+        sourceId: null,
+        dealerId,
+        flagVoided: null,
+        originalEntryId: opening.id,
+        beforeJson: JSON.stringify({
+          opening: {
+            entryDate: opening.entryDate,
+            debitPaise: opening.debitPaise,
+            creditPaise: opening.creditPaise,
+          },
+        }),
+      });
+    }
+
+    throw new VoidConflict('This dealer has no balance from the old book to delete.');
+  });
 }
 
 export async function voidPayment(db: Db, paymentId: number): Promise<VoidResult> {
-  const rows = await db
-    .select()
-    .from(schema.payments)
-    .where(eq(schema.payments.id, paymentId))
-    .limit(1);
+  return withLedgerWrite(db, async () => {
+    const rows = await db
+      .select()
+      .from(schema.payments)
+      .where(eq(schema.payments.id, paymentId))
+      .limit(1);
 
-  const pay = rows[0];
-  if (!pay) throw new Error('No such payment.');
-  if (pay.isVoided) throw new Error('That entry has already been deleted.');
+    const pay = rows[0];
+    if (!pay) throw new VoidConflict('No such payment.');
+    if (pay.isVoided) throw new VoidConflict('That entry has already been deleted.');
 
-  return voidSource(db, {
-    sourceType: 'payment',
-    sourceId: paymentId,
-    dealerId: pay.dealerId,
-    flagVoided: db
-      .update(schema.payments)
-      .set({ isVoided: true })
-      .where(eq(schema.payments.id, paymentId)),
-    beforeJson: JSON.stringify({
-      humanId: pay.humanId,
-      direction: pay.direction,
-      entryDate: pay.entryDate,
-      amountPaise: pay.amountPaise,
-      isVoided: false,
-    }),
+    return prepareVoid(db, {
+      sourceType: 'payment',
+      sourceId: paymentId,
+      dealerId: pay.dealerId,
+      flagVoided: db
+        .update(schema.payments)
+        .set({ isVoided: true })
+        .where(eq(schema.payments.id, paymentId)),
+      beforeJson: JSON.stringify({
+        humanId: pay.humanId,
+        direction: pay.direction,
+        entryDate: pay.entryDate,
+        amountPaise: pay.amountPaise,
+        isVoided: false,
+      }),
+    });
   });
 }

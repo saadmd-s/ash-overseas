@@ -9,7 +9,7 @@
  * drops records is worse than one that shows them."
  */
 
-import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import type { Db } from '../posting/db';
 import type {
@@ -61,7 +61,9 @@ async function linesByTransaction(
       ratePaise: schema.transactionLines.ratePaise,
     })
     .from(schema.transactionLines)
-    .where(inArray(schema.transactionLines.transactionId, transactionIds))
+    .where(
+      sql`${schema.transactionLines.transactionId} IN (SELECT value FROM json_each(${JSON.stringify(transactionIds)}))`,
+    )
     .orderBy(asc(schema.transactionLines.lineNo));
 
   for (const row of rows) {
@@ -162,7 +164,12 @@ export async function dealerLedgerRows(
 
   const [transactions, payments, lines] = await Promise.all([
     txIds.length
-      ? db.select().from(schema.transactions).where(inArray(schema.transactions.id, txIds))
+      ? db
+          .select()
+          .from(schema.transactions)
+          .where(
+            sql`${schema.transactions.id} IN (SELECT value FROM json_each(${JSON.stringify(txIds)}))`,
+          )
       : Promise.resolve([]),
     db.select().from(schema.payments).where(eq(schema.payments.dealerId, dealerId)),
     linesByTransaction(db, txIds),
@@ -345,38 +352,19 @@ export async function balanceRows(
   db: Db,
   opts: { includeArchived?: boolean } = {},
 ): Promise<BalanceExportRow[]> {
-  const dealers = await db
-    .select()
+  return db
+    .select({
+      dealerName: schema.dealers.name,
+      type: schema.dealers.type,
+      gstin: schema.dealers.gstin,
+      stateCode: schema.dealers.stateCode,
+      balancePaise: sql<number>`COALESCE((SELECT running_balance_paise FROM ledger_entries WHERE dealer_id = dealers.id ORDER BY entry_date DESC, id DESC LIMIT 1), 0)`,
+      lastActivity: sql<
+        string | null
+      >`(SELECT entry_date FROM ledger_entries WHERE dealer_id = dealers.id ORDER BY entry_date DESC, id DESC LIMIT 1)`,
+      transactionCount: sql<number>`(SELECT count(*) FROM transactions WHERE dealer_id = dealers.id)`,
+    })
     .from(schema.dealers)
     .where(opts.includeArchived ? undefined : eq(schema.dealers.isArchived, false))
     .orderBy(asc(schema.dealers.name));
-
-  return Promise.all(
-    dealers.map(async (d) => {
-      const latest = await db
-        .select({
-          balance: schema.ledgerEntries.runningBalancePaise,
-          entryDate: schema.ledgerEntries.entryDate,
-        })
-        .from(schema.ledgerEntries)
-        .where(eq(schema.ledgerEntries.dealerId, d.id))
-        .orderBy(desc(schema.ledgerEntries.entryDate), desc(schema.ledgerEntries.id))
-        .limit(1);
-
-      const counted = await db
-        .select({ n: sql<number>`count(*)` })
-        .from(schema.transactions)
-        .where(eq(schema.transactions.dealerId, d.id));
-
-      return {
-        dealerName: d.name,
-        type: d.type,
-        gstin: d.gstin,
-        stateCode: d.stateCode,
-        balancePaise: latest[0]?.balance ?? 0,
-        lastActivity: latest[0]?.entryDate ?? null,
-        transactionCount: Number(counted[0]?.n ?? 0),
-      };
-    }),
-  );
 }
